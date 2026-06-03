@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+debug/
+templates/
+dataset/
+dataset_hf*/
+dataset_synth*/
+models/
+inspect_samples/
+*.zip

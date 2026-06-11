@@ -9,7 +9,7 @@ import cv2
 import numpy as np
 
 from .board import load_image, save_debug_board, split_squares, warp_board
-from .fen import compress_board, orient_board
+from .fen import choose_orientation_by_score, compress_board, orient_board
 from .pieces import CLASS_NAMES, piece_for_class_name
 
 
@@ -26,6 +26,13 @@ class TrainConfig:
     learning_rate: float = 0.001
     device: str = "auto"
     progress_every: int = 100
+
+
+@dataclass(frozen=True)
+class RecognitionResult:
+    placement: str
+    orientation: str
+    orientation_scores: dict[str, int] | None = None
 
 
 def train_cnn(config: TrainConfig) -> None:
@@ -110,6 +117,26 @@ def recognize_fen_cnn(
     threshold: float = 0.0,
     infer_color_from_image: bool = False,
 ) -> str:
+    return recognize_fen_cnn_result(
+        image_path=image_path,
+        model_path=model_path,
+        orientation=orientation,
+        debug_dir=debug_dir,
+        device=device,
+        threshold=threshold,
+        infer_color_from_image=infer_color_from_image,
+    ).placement
+
+
+def recognize_fen_cnn_result(
+    image_path: Path,
+    model_path: Path,
+    orientation: str = "white",
+    debug_dir: Path | None = None,
+    device: str = "auto",
+    threshold: float = 0.0,
+    infer_color_from_image: bool = False,
+) -> RecognitionResult:
     torch = _require_torch()
     nn = torch.nn
     resolved_device = _resolve_device(torch, device)
@@ -143,8 +170,19 @@ def recognize_fen_cnn(
                 fen_row.append(piece_for_class_name(class_name))
             board.append(fen_row)
 
+    if orientation == "auto":
+        white_placement = compress_board(orient_board(board, "white"))
+        black_placement = compress_board(orient_board(board, "black"))
+        chosen, scores = choose_orientation_by_score(white_placement, black_placement)
+        print(f"orientation={chosen} white_score={scores['white']} black_score={scores['black']}", flush=True)
+        return RecognitionResult(
+            placement=black_placement if chosen == "black" else white_placement,
+            orientation=chosen,
+            orientation_scores=scores,
+        )
+
     board = orient_board(board, orientation)
-    return compress_board(board)
+    return RecognitionResult(placement=compress_board(board), orientation=orientation)
 
 
 def evaluate_cnn(

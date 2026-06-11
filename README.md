@@ -1,11 +1,85 @@
-# Image2PGN
+# ChessLens
 
-Chess board image recognition prototype.
+ChessLens is a chess position understanding prototype. It converts board
+screenshots into FEN, then uses that position as the foundation for engine-based
+analysis, threat detection, candidate move review, and human-readable plans.
 
-Current scope: **stage 1, board image -> FEN**.
+Current scope: **board screenshot -> FEN**.
 
-This first implementation targets clean chessboard images such as screenshots or
-well-framed board photos. PGN requires move history, so this stage outputs FEN.
+The project was originally named Image2PGN, but the direction has shifted away
+from reconstructing PGN from a single image. A single board image does not carry
+move history, so the practical goal is accurate FEN extraction followed by chess
+engine analysis.
+
+Target workflow:
+
+```text
+screenshot
+-> board detection and square classification
+-> FEN
+-> engine analysis
+-> best moves, risks, threats, and strategic plans
+```
+
+Planned analysis features:
+
+- Evaluate the current position with a chess engine such as Stockfish.
+- Show candidate moves and evaluation changes.
+- Identify immediate tactical risks such as mate threats, forcing checks,
+  forcing captures, hanging pieces, and engine-detected positional threats.
+- Tag candidate moves with tactical ideas such as checks, captures, forks, pins,
+  mate threats, development, center play, king safety, and heavy-piece activity.
+- Explain practical plans such as opening files, improving piece activity,
+  attacking weak squares, or improving king safety.
+
+## Engine Analysis
+
+Install or download a UCI engine such as Stockfish. The CLI tries to find
+`stockfish` on `PATH`, `Documents/stockfish/stockfish*.exe`, or
+`./stockfish/stockfish*.exe`. You can also pass the executable path explicitly
+with `--engine`.
+
+Analyze a known FEN:
+
+```powershell
+C:\Users\reals\Documents\Workspace\.venv\Scripts\python.exe -m image2pgn analyze-fen `
+  --fen "rnb1k1r1/1p3p1p/2p2p2/1q2p3/p2pP1P1/2bP1P1N/P1P1Q2P/2KR1BNR w - - 0 1" `
+  --engine C:\path\to\stockfish.exe `
+  --depth 14 `
+  --top 5
+```
+
+Analyze directly from a screenshot:
+
+```powershell
+C:\Users\reals\Documents\Workspace\.venv\Scripts\python.exe -m image2pgn analyze-image `
+  --image image\chess_img.jpg `
+  --model models\piece_cnn_target_mix.pt `
+  --orientation auto `
+  --device cuda `
+  --threshold 0.5 `
+  --side-to-move w `
+  --depth 14 `
+  --top 5
+```
+
+One screenshot cannot reveal side-to-move, castling rights, en-passant, or move
+history with certainty. Set `--side-to-move` manually when analyzing screenshots.
+
+Generate a static PNG report with arrows and an analysis panel:
+
+```powershell
+C:\Users\reals\Documents\Workspace\.venv\Scripts\python.exe -m image2pgn analyze-image `
+  --image image\chess_img.jpg `
+  --model models\piece_cnn_target_mix.pt `
+  --orientation auto `
+  --device cuda `
+  --threshold 0.5 `
+  --side-to-move w `
+  --depth 12 `
+  --top 3 `
+  --visual-out output\analysis_chess_img.png
+```
 
 ## Setup
 
@@ -15,7 +89,49 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-## Quick Start
+## Quick Start: Screenshot to FEN
+
+Recommended current model:
+
+```text
+models/piece_cnn_target_mix.pt
+```
+
+Run CNN recognition:
+
+```powershell
+C:\Users\reals\Documents\Workspace\.venv\Scripts\python.exe -m image2pgn fen-cnn `
+  --image image\chess_img.jpg `
+  --model models\piece_cnn_target_mix.pt `
+  --orientation auto `
+  --device cuda `
+  --threshold 0.5
+```
+
+This prints a full FEN with default metadata:
+
+```text
+<piece-placement> w - - 0 1
+```
+
+`--orientation auto` tries both white-bottom and black-bottom board
+interpretations and chooses the more plausible FEN. For the current baseline
+model, do not enable `--infer-color-from-image` by default; the CNN usually
+handles piece color better than the brightness-based fallback.
+
+Optional debug output:
+
+```powershell
+C:\Users\reals\Documents\Workspace\.venv\Scripts\python.exe -m image2pgn fen-cnn `
+  --image image\chess_img.jpg `
+  --model models\piece_cnn_target_mix.pt `
+  --orientation auto `
+  --device cuda `
+  --threshold 0.5 `
+  --debug-dir debug\chess_img
+```
+
+## Legacy Template Matching
 
 The recognizer uses template matching. First teach it a board style from an image
 with a known FEN:
@@ -43,11 +159,8 @@ This prints a full FEN with default metadata:
 
 Use `--placement-only` if you only want the first FEN field.
 
-Optional debug output:
-
-```powershell
-python -m image2pgn fen --image samples/position.png --templates templates/default --debug-dir debug
-```
+The template workflow is kept for experimentation, but the CNN workflow is the
+main path for general screenshot recognition.
 
 ## Board Orientation
 
@@ -58,12 +171,15 @@ Black's side, add:
 --orientation black
 ```
 
-## Limitations
+## Current Limitations
 
-- The current classifier is template-based, not a trained OCR/CV model.
-- It works best when the input board style matches the learned templates.
+- The current system outputs FEN, not PGN.
+- PGN reconstruction requires a sequence of positions or move history.
+- One screenshot can support position analysis but cannot uniquely recover the
+  game history.
+- Engine analysis is planned but not implemented yet.
 - For real offline photos, the next steps are stronger board detection,
-  larger labeled data, and a learned piece classifier.
+  perspective correction, and more target-style data.
 
 ## CNN Classifier Workflow
 
@@ -101,16 +217,18 @@ Recognize with the trained CNN:
 ```powershell
 python -m image2pgn fen-cnn `
   --image image/new_board.jpg `
-  --model models/piece_cnn.pt `
-  --orientation white `
-  --threshold 0.8 `
-  --infer-color-from-image
+  --model models/piece_cnn_target_mix.pt `
+  --orientation auto `
+  --threshold 0.5
 ```
 
 `--threshold` uses the CNN softmax confidence. Predictions below the threshold
 are treated as empty squares, which helps reduce false piece detections.
 `--infer-color-from-image` keeps the CNN's piece type prediction but rechecks
-white/black from the square image brightness.
+white/black from the square image brightness. Treat it as a fallback, not the
+default for the current baseline model.
+`--orientation auto` runs both white-bottom and black-bottom interpretations,
+then chooses the more plausible FEN by a lightweight chess-position score.
 
 CNN recognition generalizes only as far as the data does. Add labeled examples
 from many board themes, piece sets, colors, and camera conditions.

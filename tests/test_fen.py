@@ -1,4 +1,11 @@
-from image2pgn.fen import compress_board, expand_placement, normalize_piece_placement, orient_board
+from image2pgn.fen import (
+    choose_orientation_by_score,
+    compress_board,
+    expand_placement,
+    normalize_piece_placement,
+    orient_board,
+    score_piece_placement,
+)
 
 
 def test_expand_and_compress_piece_placement():
@@ -18,3 +25,19 @@ def test_black_orientation_rotates_board():
 
     assert compress_board(orient_board(board, "black")) == "K7/8/8/8/8/8/8/7k"
 
+
+def test_score_piece_placement_penalizes_pawns_on_back_rank():
+    normal = "8/8/8/8/8/8/PPPPPPPP/RNBQKBNR"
+    bad = "PPPPPPPP/8/8/8/8/8/8/RNBQKBNR"
+
+    assert score_piece_placement(normal) > score_piece_placement(bad)
+
+
+def test_choose_orientation_by_score_prefers_more_plausible_board():
+    white = "PPPPPPPP/8/8/8/8/8/8/RNBQKBNR"
+    black = "rnbqkbnr/8/8/8/8/8/PPPPPPPP/RNBQKBNR"
+
+    chosen, scores = choose_orientation_by_score(white, black)
+
+    assert chosen == "black"
+    assert scores["black"] > scores["white"]

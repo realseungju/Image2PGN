@@ -3,7 +3,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from .cnn import TrainConfig, evaluate_cnn, recognize_fen_cnn, train_cnn
+from .analyze import analyze_fen, format_analysis
+from .cnn import TrainConfig, evaluate_cnn, recognize_fen_cnn, recognize_fen_cnn_result, train_cnn
 from .dataset import (
     import_class_folder_dataset,
     import_huggingface_image_dataset,
@@ -12,6 +13,7 @@ from .dataset import (
 )
 from .recognizer import learn_templates, recognize_fen
 from .synthetic import STYLE_COLORS, SyntheticConfig, generate_synthetic_dataset
+from .visualize import save_analysis_overlay
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -254,7 +256,7 @@ def build_parser() -> argparse.ArgumentParser:
     fen_cnn.add_argument("--model", required=True, type=Path, help="Trained CNN .pt model path.")
     fen_cnn.add_argument(
         "--orientation",
-        choices=("white", "black"),
+        choices=("white", "black", "auto"),
         default="white",
         help="Side at the bottom of the input image.",
     )
@@ -286,6 +288,37 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print only the piece-placement field instead of full FEN.",
     )
     fen_cnn.add_argument("--debug-dir", type=Path, help="Optional directory for warped board/square previews.")
+
+    analyze_fen_parser = subparsers.add_parser("analyze-fen", help="Analyze a FEN with a UCI chess engine.")
+    analyze_fen_parser.add_argument("--fen", required=True, help="Full FEN to analyze.")
+    analyze_fen_parser.add_argument("--engine", type=Path, help="Path to a UCI engine executable.")
+    analyze_fen_parser.add_argument("--depth", type=int, default=14, help="Engine search depth.")
+    analyze_fen_parser.add_argument("--movetime-ms", type=int, help="Use fixed engine time instead of depth.")
+    analyze_fen_parser.add_argument("--top", type=int, default=5, help="Number of candidate moves to show.")
+
+    analyze_image = subparsers.add_parser("analyze-image", help="Recognize a screenshot FEN and analyze it.")
+    analyze_image.add_argument("--image", required=True, type=Path, help="Path to a chessboard image.")
+    analyze_image.add_argument("--model", required=True, type=Path, help="Trained CNN .pt model path.")
+    analyze_image.add_argument(
+        "--orientation",
+        choices=("white", "black", "auto"),
+        default="auto",
+        help="Side at the bottom of the input image.",
+    )
+    analyze_image.add_argument("--device", default="auto", help="auto, cpu, cuda, or a PyTorch device string.")
+    analyze_image.add_argument("--threshold", type=float, default=0.5, help="CNN confidence threshold.")
+    analyze_image.add_argument("--side-to-move", choices=("w", "b"), default="w", help="Side to move for analysis.")
+    analyze_image.add_argument(
+        "--infer-color-from-image",
+        action="store_true",
+        help="Fallback color correction based on square brightness.",
+    )
+    analyze_image.add_argument("--debug-dir", type=Path, help="Optional directory for warped board/square previews.")
+    analyze_image.add_argument("--engine", type=Path, help="Path to a UCI engine executable.")
+    analyze_image.add_argument("--depth", type=int, default=14, help="Engine search depth.")
+    analyze_image.add_argument("--movetime-ms", type=int, help="Use fixed engine time instead of depth.")
+    analyze_image.add_argument("--top", type=int, default=5, help="Number of candidate moves to show.")
+    analyze_image.add_argument("--visual-out", type=Path, help="Optional PNG path for a static visual analysis overlay.")
 
     return parser
 
@@ -457,6 +490,46 @@ def main() -> None:
                 f"{placement} {args.side_to_move} {args.castling} "
                 f"{args.en_passant} {args.halfmove} {args.fullmove}"
             )
+        return
+
+    if args.command == "analyze-fen":
+        analysis = analyze_fen(
+            fen=args.fen,
+            engine_path=args.engine,
+            depth=args.depth,
+            top=args.top,
+            movetime_ms=args.movetime_ms,
+        )
+        print(format_analysis(analysis))
+        return
+
+    if args.command == "analyze-image":
+        recognition = recognize_fen_cnn_result(
+            image_path=args.image,
+            model_path=args.model,
+            orientation=args.orientation,
+            device=args.device,
+            debug_dir=args.debug_dir,
+            threshold=args.threshold,
+            infer_color_from_image=args.infer_color_from_image,
+        )
+        fen = f"{recognition.placement} {args.side_to_move} - - 0 1"
+        analysis = analyze_fen(
+            fen=fen,
+            engine_path=args.engine,
+            depth=args.depth,
+            top=args.top,
+            movetime_ms=args.movetime_ms,
+        )
+        print(format_analysis(analysis))
+        if args.visual_out is not None:
+            save_analysis_overlay(
+                image_path=args.image,
+                analysis=analysis,
+                orientation=recognition.orientation,
+                output_path=args.visual_out,
+            )
+            print(f"visual saved to {args.visual_out}")
         return
 
     parser.error(f"unknown command: {args.command}")

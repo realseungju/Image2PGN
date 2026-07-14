@@ -9,9 +9,9 @@
    - `docs/projects/image2pgn.md` (프로젝트 컨텍스트)
    - 담당 task 파일 + 연결된 spec
 2. 이 repo에는 코드/데이터/결과물만 커밋한다. 지식·결정·task 갱신은 두뇌 repo에.
-3. 기록(ADR-015): 구현-레벨 로그는 이 repo `system/handoff.md`에
-   `python infra/new-handoff.py --agent ... --title ... --did ... --next ...` 로 기록(손편집 금지).
-   마일스톤·완료는 shared-brain 레지스트리 상태 갱신 + 재사용 교훈 knowledge/ 승격 검토.
+3. 기록(ADR-016): 작업 이력은 커밋 메시지(Conventional Commits)로 충분.
+   세션 정리는 shared-brain 세션 요약(「장기 기억에 정리」 트리거). 마일스톤·완료는
+   shared-brain 레지스트리 갱신 + 재사용 교훈 knowledge/ 승격 검토.
 4. 커밋 형식: Conventional Commits (`feat:`, `fix:`, `docs:`, `refactor:` ...)
 5. Python: 가상환경 사용 (`venv/`), `requirements.txt` 갱신 필수
 

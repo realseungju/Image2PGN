@@ -8,7 +8,7 @@ from collections import defaultdict
 import cv2
 import numpy as np
 
-from .board import load_image, save_debug_board, split_squares, warp_board
+from .board import background_empty_squares, load_image, save_debug_board, split_squares, warp_board
 from .fen import choose_orientation_by_score, compress_board, orient_board
 from .pieces import CLASS_NAMES, piece_for_class_name
 
@@ -116,6 +116,8 @@ def recognize_fen_cnn(
     device: str = "auto",
     threshold: float = 0.0,
     infer_color_from_image: bool = False,
+    board_detector: str = "legacy",
+    suppress_empty_background: bool = False,
 ) -> str:
     return recognize_fen_cnn_result(
         image_path=image_path,
@@ -125,6 +127,8 @@ def recognize_fen_cnn(
         device=device,
         threshold=threshold,
         infer_color_from_image=infer_color_from_image,
+        board_detector=board_detector,
+        suppress_empty_background=suppress_empty_background,
     ).placement
 
 
@@ -136,6 +140,8 @@ def recognize_fen_cnn_result(
     device: str = "auto",
     threshold: float = 0.0,
     infer_color_from_image: bool = False,
+    board_detector: str = "legacy",
+    suppress_empty_background: bool = False,
 ) -> RecognitionResult:
     torch = _require_torch()
     nn = torch.nn
@@ -148,23 +154,26 @@ def recognize_fen_cnn_result(
     model.eval()
 
     image = load_image(image_path)
-    board_image = warp_board(image)
+    board_image = warp_board(image, detector=board_detector)
     squares = split_squares(board_image)
+    empty_background = background_empty_squares(squares) if suppress_empty_background else [[False] * 8 for _ in range(8)]
 
     if debug_dir is not None:
         save_debug_board(debug_dir, board_image, squares)
 
     board: list[list[str]] = []
     with torch.no_grad():
-        for row in squares:
+        for row_index, row in enumerate(squares):
             fen_row: list[str] = []
-            for square in row:
+            for col_index, square in enumerate(row):
                 tensor = _square_to_tensor(square, torch).unsqueeze(0).to(resolved_device)
                 logits = model(tensor)
                 probabilities = torch.softmax(logits, dim=1)
                 score, prediction = torch.max(probabilities, dim=1)
                 index = int(prediction.item())
                 class_name = class_name_from_prediction(class_names, index, float(score.item()), threshold)
+                if empty_background[row_index][col_index]:
+                    class_name = "empty"
                 if infer_color_from_image and class_name != "empty":
                     class_name = class_name_with_inferred_color(square, class_name)
                 fen_row.append(piece_for_class_name(class_name))

@@ -320,6 +320,10 @@ def build_parser() -> argparse.ArgumentParser:
     analyze_image.add_argument("--top", type=int, default=5, help="Number of candidate moves to show.")
     analyze_image.add_argument("--visual-out", type=Path, help="Optional PNG path for a static visual analysis overlay.")
 
+    for image_parser in (fen_cnn, analyze_image):
+        image_parser.add_argument("--board-detector", choices=("grid", "legacy"), default="legacy", help="Opt in to 8x8 screenshot pattern search; default preserves the original contour/center crop.")
+        image_parser.add_argument("--background-filter", action="store_true", help="Opt in to board-context empty-square suppression (experimental).")
+
     return parser
 
 
@@ -482,6 +486,8 @@ def main() -> None:
             debug_dir=args.debug_dir,
             threshold=args.threshold,
             infer_color_from_image=args.infer_color_from_image,
+            board_detector=args.board_detector,
+            suppress_empty_background=args.background_filter,
         )
         if args.placement_only:
             print(placement)
@@ -512,6 +518,8 @@ def main() -> None:
             debug_dir=args.debug_dir,
             threshold=args.threshold,
             infer_color_from_image=args.infer_color_from_image,
+            board_detector=args.board_detector,
+            suppress_empty_background=args.background_filter,
         )
         fen = f"{recognition.placement} {args.side_to_move} - - 0 1"
         analysis = analyze_fen(

@@ -1,5 +1,50 @@
 # ChessLens
 
+## Experimental screenshot improvements (2026-09-07)
+
+Two independent options are available for `fen-cnn` and `analyze-image`:
+
+- `--board-detector grid`: locate an axis-aligned 8x8 background pattern before
+  falling back to the original contour detector. The search covers boards at
+  least half the screenshot width, with height/width near 0.92–1.04.
+- `--background-filter`: use board corner colors and texture to suppress CNN
+  predictions on squares with no substantial central foreground component.
+  This changes postprocessing, not model weights or training.
+
+```powershell
+.\.venv\Scripts\python.exe -m image2pgn fen-cnn `
+  --image path\to\screenshot.jpg `
+  --model models\piece_cnn_target_mix.pt `
+  --orientation auto --threshold 0.5 `
+  --board-detector grid --background-filter
+```
+
+Both are **opt-in**: omitting the options preserves the original behavior.
+The first development collection contained 15 user-provided screenshots with
+provisional visual labels. Complete piece-placement matches were 6/15 for the
+original pipeline, 8/15 for grid detection alone, 6/15 for background filtering
+alone, and 9/15 with both. Correct squares were 804, 878, 826, and 906 of 960,
+respectively. These are development regressions, **not held-out performance**.
+Three images had fewer correct squares with both options; one exposed the
+existing orientation heuristic reversing the board after color misclassification.
+Different piece designs, text overlays, small/low-contrast pieces, and heavy
+perspective remain limitations. The background filter needs a correctly aligned
+grid; it can remove real pieces if its background assumption fails.
+
+Reproduce a four-way comparison with local images and labels (no bundled personal screenshots):
+
+```powershell
+.\.venv\Scripts\python.exe infra\evaluate_screenshots.py `
+  --images path\to\screenshots --labels path\to\visual-labels.json `
+  --model models\piece_cnn_target_mix.pt --out output\screenshot-comparison
+```
+
+The manifest has `items` containing `file`, `orientation` (`white` or `black`),
+and `rows` (eight screen-order strings of eight FEN piece symbols, with `.` for
+empty). Results include input/model/label hashes, predictions and per-square
+errors. Label quality and independence must be checked before using new scores
+as a performance claim.
+
 ChessLens is a chess position understanding prototype. It converts board
 screenshots into FEN, then uses that position as the foundation for engine-based
 analysis, threat detection, candidate move review, and human-readable plans.

@@ -626,6 +626,42 @@ not used.
 
 ## Next Steps
 
+### Joint versus factorized outputs
+
+`infra/compare_heads.py` compares a new 13-class head against independent
+occupancy (1), type (6), and side (2) outputs on the same pretrained features.
+Both output configurations are newly initialized. They receive the same
+28,598-image manifest, seed, eight epochs, optimizer and per-epoch sample order.
+The generator and recorded v3 manifest from the color experiment are required.
+
+```powershell
+python infra/compare_heads.py --data PATH_TO_COLOR_DATA --manifest PATH_TO_V3_METADATA_JSON --path-base PATH_TO_ORIGINAL_COMMAND_CWD --init models/piece_cnn_target_mix.pt --labels PATH_TO_LABELS_JSON --images PATH_TO_SCREENSHOTS --out output/head-comparison
+```
+
+Use the CUDA training environment described below. This experiment uses the
+same dependencies in `requirements-color-training.txt`. It checks input hashes
+and requires a fresh output path. Kaggle's 50 replay samples receive a type-only
+loss by marginalizing over both sides; their pseudo-side labels are not used.
+Kaggle's 52 validation samples are excluded from full-class checkpoint selection
+and evaluated only for conditional type recognition. The remaining selection
+sets are spatial synthetic validation and ChessVision validation.
+
+The factorized model returns normalized log probabilities in the existing
+13-class order, constructed from occupancy, type and side probabilities. It
+assumes conditional independence of type and side given shared features.
+Both arms use the same partial-label NLL plus a 0.25 side loss on known-side,
+occupied examples. This differs from training two separate CNNs in sequence.
+
+Outputs include separate checkpoints, epoch-average training losses,
+validation histories, per-epoch shuffle hashes and screenshot predictions.
+These checkpoints use `compare_heads.restore(path, device)` and are experimental:
+they are not supported by the existing `fen-cnn --model` loader. Do not replace
+the default model file with them. The experiment reuses development images and
+an already inspected synthetic evaluation set; it does not establish independent
+generalization performance. Historical pseudo-label exposure in the initial
+backbone also remains. No claim of architecture superiority should be made
+from one seed and a fixed eight-epoch budget alone.
+
 ### Reproducible color fine-tuning experiment (2026-09-07)
 
 The new experiment keeps the existing 317,965-parameter, 96px, 13-class CNN.

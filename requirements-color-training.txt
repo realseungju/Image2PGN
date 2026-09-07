@@ -1,0 +1,5 @@
+# Install torch from the CUDA index first when training on an NVIDIA GPU.
+torch==2.7.1
+resvg-py==0.5.0
+numpy==2.5.3
+opencv-python==5.0.0.93

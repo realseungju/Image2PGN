@@ -2,3 +2,4 @@ numpy>=1.26
 opencv-python>=4.9
 pytest>=8.0
 chess>=1.11
+# Reproducible color-training extras: requirements-color-training.txt

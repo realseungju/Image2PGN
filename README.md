@@ -626,6 +626,50 @@ not used.
 
 ## Next Steps
 
+### Reproducible color fine-tuning experiment (2026-09-07)
+
+The new experiment keeps the existing 317,965-parameter, 96px, 13-class CNN.
+It adds design-disjoint synthetic data and a color auxiliary loss obtained by
+grouping the existing white/black logits. There is no extra inference head.
+Candidate weights are separate from `piece_cnn_target_mix.pt`; do not replace
+the default based on the development screenshots alone.
+
+In a separate Python 3.12 environment on NVIDIA CUDA hardware:
+
+```powershell
+python -m pip install torch==2.7.1 --index-url https://download.pytorch.org/whl/cu128
+python -m pip install -r requirements.txt -r requirements-color-training.txt
+python infra/robust_synthetic.py --out output/color-data --fetch
+python infra/train_color.py --data output/color-data --replay dataset_hf --replay-limit 1000 --extra-replay dataset_synth_target --init models/piece_cnn_target_mix.pt --out output/color-run
+python infra/evaluate_color.py --baseline models/piece_cnn_target_mix.pt --candidate output/color-run/best.pt --data output/color-data --labels PATH_TO_LABELS_JSON --images PATH_TO_SCREENSHOTS --out output/color-run/comparison.json
+```
+
+The generator downloads a pinned Lichess revision and records URLs, hashes,
+authors and licenses in `assets/manifest.json` with the original `COPYING.md`.
+Chessnut (Apache-2.0), fantasy/celtic (MIT) are training designs; spatial (MIT)
+is validation; rhosgfx (CC0-1.0) is the test design. Images are generated after
+this split. Historical training exposure of the old checkpoint is unknown.
+Asset license/source references: [Lichess COPYING](https://github.com/lichess-org/lila/blob/e053316a1a1816edbc83d220d8439ccad60b5636/COPYING.md).
+
+The trainer samples old training data for replay, removes exact replay
+train/validation duplicates, records the selected files and hashes, fixes the
+seed, and saves the epoch with the lowest mean cross entropy across synthetic
+and legacy validation (including the untrained baseline as epoch 0).
+Check `metadata.json` and `history.json` before using `best.pt`: selection may
+retain epoch 0 if training does not help. CLI outputs may not overwrite a run.
+
+Evaluate piece color, type, missed pieces, false pieces and whole-board FEN
+separately. Color errors use all ground-truth occupied squares as denominator;
+misses are reported separately. Screenshot evaluation uses the same grid,
+threshold 0.5, background filter, and orientation heuristic for both models.
+Fixed-orientation tile accuracy is separate from automatic-orientation exact
+board accuracy. Results are exploratory: the same 15 screenshots were already
+used during development, and the synthetic test was inspected after the first
+training attempt. New real screenshots with verified labels are still needed.
+
+The older validation number below is historical, not an independent benchmark:
+exact duplicate images were found across the old train/validation folders.
+
 - Add more target-style screenshots with known FEN.
 - Generate more `dataset_synth_target` from those screenshots.
 - Keep a small target validation set separate from training data.

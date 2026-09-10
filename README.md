@@ -748,3 +748,10 @@ Generate procedural search, comment, and text overlays on empty tiles:
 
 Add --hardneg <new-ui-data-dir> to the retrain_exclusion.py command. This appends 1200 empty tiles to the 28548-image exclusion dataset; 300 separately seeded synthetic UI tiles are evaluated only after the fixed epoch-8 checkpoint is saved. No evaluation screenshot crops are used for training. Check false positives and missed real pieces together. Run artifacts and the candidate are preserved locally under output/ui-negatives-20260910; the default model is unchanged.
 
+
+### Central-brightness feature comparison
+
+infra/center_fusion.py compares fresh control and feature-augmented CNNs using the same replay manifest, initial checkpoint, epoch-specific data order and dropout seeds. Five scalar features (central 25/40 percent median brightness, border median, and two differences) add 65 parameters to the 13-class output layer. Added weights start at zero to preserve initial predictions. Both models are fixed at epoch 8. The 49 user visual choices are not training labels.
+
+Use --help for input paths. Checkpoints use the experimental center_fusion.restore loader; they are not compatible with the standard CLI model loader. The existing default model is unchanged.
+

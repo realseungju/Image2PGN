@@ -755,3 +755,24 @@ infra/center_fusion.py compares fresh control and feature-augmented CNNs using t
 
 Use --help for input paths. Checkpoints use the experimental center_fusion.restore loader; they are not compatible with the standard CLI model loader. The existing default model is unchanged.
 
+
+
+### CNN automatic board orientation
+
+`fen-cnn` and `analyze-image` with `--orientation auto` now try coordinate
+labels first, then estimate direction from pawn distribution, back-rank pieces,
+and basic position validity with either side to move. At least three distinct
+labels on one axis must agree, with no opposing coordinate evidence.
+
+The optional local Windows OCR adapter uses installed OCR languages and reads
+inside-left rank labels and inside-bottom file labels. It does not install
+languages or change PowerShell settings. Missing OCR, unreadable labels, or
+unsupported coordinate layouts fall back to position estimation. OCR coverage
+is currently limited; neither OCR agreement nor position scores guarantee truth.
+
+Output reports `source` and `status`: `coordinate_supported`, `estimated`, or
+`uncertain`. Python `RecognitionResult.orientation_details` preserves both
+placement candidates and the evidence. Position scores are not probabilities.
+Use `--orientation white` or `--orientation black` to override auto without OCR.
+This determines the side at the bottom, not the side to move, castling rights,
+or game history. CNN weights and board detection are unchanged by this feature.

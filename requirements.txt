@@ -8,3 +8,4 @@ chess>=1.11
 # Replay exclusion experiment reuses the color-training dependencies.
 # Procedural UI negatives reuse NumPy and OpenCV; no additional dependencies.
 # Center-brightness fusion reuses existing PyTorch, NumPy and OpenCV dependencies.
+# Board orientation reuses chess/OpenCV/NumPy; Windows OCR is an optional OS component.

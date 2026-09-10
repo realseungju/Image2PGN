@@ -9,7 +9,8 @@ import cv2
 import numpy as np
 
 from .board import background_empty_squares, load_image, save_debug_board, split_squares, warp_board
-from .fen import choose_orientation_by_score, compress_board, orient_board
+from .fen import compress_board, orient_board
+from .orientation import resolve_orientation
 from .pieces import CLASS_NAMES, piece_for_class_name
 
 
@@ -32,7 +33,10 @@ class TrainConfig:
 class RecognitionResult:
     placement: str
     orientation: str
-    orientation_scores: dict[str, int] | None = None
+    orientation_scores: dict[str, float] | None = None
+    orientation_source: str | None = None
+    orientation_status: str | None = None
+    orientation_details: dict | None = None
 
 
 def train_cnn(config: TrainConfig) -> None:
@@ -182,12 +186,19 @@ def recognize_fen_cnn_result(
     if orientation == "auto":
         white_placement = compress_board(orient_board(board, "white"))
         black_placement = compress_board(orient_board(board, "black"))
-        chosen, scores = choose_orientation_by_score(white_placement, black_placement)
-        print(f"orientation={chosen} white_score={scores['white']} black_score={scores['black']}", flush=True)
+        details = resolve_orientation(white_placement, black_placement, board_image)
+        chosen, scores = details["orientation"], details["scores"]
+        print(f"orientation={chosen} source={details['source']} status={details['status']} "
+              f"white_score={scores['white']:.2f} black_score={scores['black']:.2f}", flush=True)
+        if details["source"] == "position":
+            print("Orientation is an estimate; override with --orientation white or black.", flush=True)
         return RecognitionResult(
             placement=black_placement if chosen == "black" else white_placement,
             orientation=chosen,
             orientation_scores=scores,
+            orientation_source=details["source"],
+            orientation_status=details["status"],
+            orientation_details=details,
         )
 
     board = orient_board(board, orientation)

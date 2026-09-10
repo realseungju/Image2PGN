@@ -739,3 +739,12 @@ These checks use a DOM stub; actual browser download/import must also be checked
 
 infra/retrain_exclusion.py reruns the fixed eight-epoch CNN fine-tuning after excluding exactly 50 audited replay images. It validates manifest and image hashes, saves epoch-average losses, preserves the epoch-8 checkpoint, and evaluates the previous v3 candidate and exclusion candidate with identical preprocessing. Run with --help for required paths. Local run artifacts: output/exclude50-20260910. The default model is unchanged.
 
+
+### UI hard-negative experiment
+
+Generate procedural search, comment, and text overlays on empty tiles:
+
+    python infra/ui_negatives.py --out <new-ui-data-dir>
+
+Add --hardneg <new-ui-data-dir> to the retrain_exclusion.py command. This appends 1200 empty tiles to the 28548-image exclusion dataset; 300 separately seeded synthetic UI tiles are evaluated only after the fixed epoch-8 checkpoint is saved. No evaluation screenshot crops are used for training. Check false positives and missed real pieces together. Run artifacts and the candidate are preserved locally under output/ui-negatives-20260910; the default model is unchanged.
+

@@ -6,3 +6,4 @@ chess>=1.11
 # Joint/factorized head comparison reuses the same training extras.
 # Offline label review uses Python standard library only.
 # Replay exclusion experiment reuses the color-training dependencies.
+# Procedural UI negatives reuse NumPy and OpenCV; no additional dependencies.

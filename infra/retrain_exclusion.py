@@ -20,6 +20,7 @@ def read_rows(rows,base):
 def main():
     ap=argparse.ArgumentParser()
     for name in ('manifest','audit','base','data','init','reference','labels','images','out'):ap.add_argument('--'+name,type=Path,required=True)
+    ap.add_argument("--hardneg",type=Path)
     a=ap.parse_args()
     if a.out.exists():raise ValueError('Output must be new')
     m=json.loads(a.manifest.read_text(encoding='utf-8'));audit=json.loads(a.audit.read_text(encoding='utf-8'))
@@ -34,6 +35,10 @@ def main():
     read_rows(removed,a.base)
     x,y=load_npz(a.data/'train.npz');rx,ry=read_rows(kept,a.base);x=np.concatenate((x,rx));y=np.concatenate((y,ry))
     assert len(y)==28548
+    if a.hardneg:
+        nx,ny=load_npz(a.hardneg/'train.npz')
+        if nx.shape!=(1200,96,96,3) or not np.all(ny==0):raise ValueError('Expected 1200 empty UI tiles')
+        x=np.concatenate((x,nx));y=np.concatenate((y,ny))
     vx,vy=load_npz(a.data/'val.npz')
     val=[r for r in m['replay_val'] if Path(r['path']).name.startswith('s1m0n38_')]
     assert len(val)==595
@@ -43,6 +48,9 @@ def main():
     device='cuda';model=load_model(a.init,device)
     a.out.mkdir(parents=True)
     metadata={'config':{k:str(v) for k,v in vars(a).items()},'seed':20260907,'epochs':8,'selection':'fixed epoch 8 before run','train_count':len(y),'excluded':removed,'replay_train':kept,'replay_val':val,'initial_sha256':sha(a.init),'reference_sha256':sha(a.reference),'script_sha256':sha(__file__),'manifest_sha256':sha(a.manifest),'audit_sha256':sha(a.audit),'npz_sha256':{n:sha(a.data/(n+'.npz')) for n in ('train','val','test')},'torch':torch.__version__,'numpy':np.__version__,'opencv':cv2.__version__,'gpu':torch.cuda.get_device_name(),'batch_size':128,'learning_rate':.0001,'weight_decay':.0001,'color_weight':.25,'limitations':['single seed exploratory','removal changes batch composition; both runs have 224 steps per epoch','historical initialization exposure not removed','15 screenshots and rhosgfx previously used for development']}
+    metadata['steps_per_epoch']=(len(y)+127)//128
+    metadata['limitations'][1]='Data changes batch composition; additional UI tiles also increase training steps'
+    if a.hardneg:metadata['hardneg_sha256']={n:sha(a.hardneg/n) for n in ('train.npz','holdout.npz','manifest.json')}
     (a.out/'metadata.json').write_text(json.dumps(metadata,indent=2),encoding='utf-8')
     optimizer=torch.optim.AdamW(model.parameters(),lr=.0001,weight_decay=.0001)
     loader=torch.utils.data.DataLoader(tensors(x,y),batch_size=128,shuffle=True)
@@ -62,11 +70,19 @@ def main():
     checkpoint=a.out/'epoch8.pt'
     torch.save({'model_state':model.cpu().state_dict(),'class_names':CLASS_NAMES,'image_size':96,'epoch':8},checkpoint)
     tx,ty=load_npz(a.data/'test.npz');results={}
-    for name,path in [('reference_v3',a.reference),('exclude50',checkpoint)]:
+    for name,path in [('reference',a.reference),('candidate',checkpoint)]:
         loaded=load_model(path,device)
         hf,hpred=evaluate(loaded,hx,hy,device);test,tpred=evaluate(loaded,tx,ty,device);screen=screens(loaded,a.labels,a.images,device)
         results[name]={'sha256':sha(path),'chessvision':hf,'chessvision_predictions':hpred,'rhosgfx':test,'rhosgfx_predictions':tpred,'screenshots':screen}
-        print(name,'HF',hf['correct'],'rhosgfx',test['correct'],'screens',screen['aggregate']['correct'],'exact',screen['auto_exact'],flush=True)
+        if a.hardneg:
+            ux,uy=load_npz(a.hardneg/'holdout.npz')
+            um,up=evaluate(loaded,ux,uy,device)
+            probabilities=[]
+            with torch.no_grad():
+                for bx,by in torch.utils.data.DataLoader(tensors(ux,uy),batch_size=128):probabilities.extend(loaded(bx.to(device).float()/255).softmax(1).max(1).values.cpu().tolist())
+            filtered=np.array(up);filtered[np.array(probabilities)<.5]=0
+            results[name]['ui_holdout']={'raw':um,'threshold_false_pieces':int((filtered>0).sum()),'predictions':up,'confidence':probabilities}
+        print(name,'HF' ,hf['correct'],'rhosgfx',test['correct'],'screens',screen['aggregate']['correct'],'exact',screen['auto_exact'],flush=True)
     (a.out/'comparison.json').write_text(json.dumps(results,indent=2),encoding='utf-8')
     print('Completed; candidate SHA256 '+sha(checkpoint),flush=True)
 

@@ -48,6 +48,7 @@ function render(){
  const list=visible();$('grid').replaceChildren();for(const i of list){const b=document.createElement('button');b.textContent=items[i].id;b.className=(state.reviews[items[i].id]?'done ':'')+(i===index?'active':'');b.onclick=()=>{index=i;render()};$('grid').append(b)}
  $('prev').disabled=index===0;$('next').disabled=index===49;
 }
+$('tile').onerror=()=>tell('이미지를 불러오지 못했습니다. HTML 옆의 images 폴더가 함께 있는지 확인하세요.');
 document.querySelectorAll('[data-side]').forEach(b=>b.onclick=()=>{const item=items[index],old=state.reviews[item.id];state.reviews[item.id]={sha256:item.sha256,side:b.dataset.side,note:old?.note||'',evidence:old?.evidence||'',verified:false,updated_at:new Date().toISOString()};persist();render()});
 $('note').onchange=save;$('evidence').onchange=save;$('verified').onchange=save;
 $('reviewer').onchange=()=>{state.reviewer=$('reviewer').value;Object.values(state.reviews).forEach(r=>r.verified=false);persist();render()};

@@ -2,6 +2,13 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
 const html=fs.readFileSync(process.argv[2],'utf8');
 const payload=html.match(/<script id="dataset" type="application\/json">([\s\S]*?)<\/script>/)[1];
+const path=require('node:path'),crypto=require('node:crypto');
+for(const item of JSON.parse(payload).items){
+ assert.ok(!item.image.startsWith('data:'),'Use ordinary image files for viewer compatibility');
+ const bytes=fs.readFileSync(path.resolve(path.dirname(process.argv[2]),item.image));
+ assert.equal(crypto.createHash('sha256').update(bytes).digest('hex'),item.sha256);
+ assert.equal(bytes.subarray(0,8).toString('hex'),'89504e470d0a1a0a');
+}
 const script=html.match(/<\/script><script>([\s\S]*?)<\/script>/)[1];
 const elements={}, storage={};
 function el(id){return elements[id]??=( {value:'',checked:false,dataset:{},textContent:'',setAttribute(k,v){this[k]=v},replaceChildren(){},append(){},click(){}} )}

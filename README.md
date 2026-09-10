@@ -718,3 +718,18 @@ real target screenshots
 ```
 
 
+
+### Offline label review
+
+Generate a self-contained page for the 50 replay samples with Python (standard library only):
+
+    python infra/build_label_review.py --audit <audit.json> --output <review.html>
+
+Open the HTML, choose a side or unresolved, and export the review JSON. Browser storage is temporary; keep the downloaded JSON. Source-backed confirmation requires a reviewer name and evidence. Visual proposals are not training approvals. The page never changes the dataset or starts training.
+
+JavaScript logic checks (Node.js, no dependencies):
+
+    node tests/test_label_review.cjs <review.html>
+
+These checks use a DOM stub; actual browser download/import must also be checked manually.
+

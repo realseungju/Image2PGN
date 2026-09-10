@@ -734,3 +734,8 @@ JavaScript logic checks (Node.js, no dependencies):
 These checks use a DOM stub; actual browser download/import must also be checked manually.
 
 
+
+### Audited replay exclusion experiment
+
+infra/retrain_exclusion.py reruns the fixed eight-epoch CNN fine-tuning after excluding exactly 50 audited replay images. It validates manifest and image hashes, saves epoch-average losses, preserves the epoch-8 checkpoint, and evaluates the previous v3 candidate and exclusion candidate with identical preprocessing. Run with --help for required paths. Local run artifacts: output/exclude50-20260910. The default model is unchanged.
+

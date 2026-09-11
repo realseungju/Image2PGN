@@ -37,6 +37,7 @@ class RecognitionResult:
     orientation_source: str | None = None
     orientation_status: str | None = None
     orientation_details: dict | None = None
+    review_squares: tuple[dict, ...] = ()
 
 
 def train_cnn(config: TrainConfig) -> None:
@@ -122,6 +123,7 @@ def recognize_fen_cnn(
     infer_color_from_image: bool = False,
     board_detector: str = "legacy",
     suppress_empty_background: bool = False,
+    low_confidence_policy: str = "empty",
 ) -> str:
     return recognize_fen_cnn_result(
         image_path=image_path,
@@ -133,6 +135,7 @@ def recognize_fen_cnn(
         infer_color_from_image=infer_color_from_image,
         board_detector=board_detector,
         suppress_empty_background=suppress_empty_background,
+        low_confidence_policy=low_confidence_policy,
     ).placement
 
 
@@ -146,7 +149,10 @@ def recognize_fen_cnn_result(
     infer_color_from_image: bool = False,
     board_detector: str = "legacy",
     suppress_empty_background: bool = False,
+    low_confidence_policy: str = "empty",
 ) -> RecognitionResult:
+    if low_confidence_policy not in ("empty", "review"):
+        raise ValueError("low_confidence_policy must be empty or review")
     torch = _require_torch()
     nn = torch.nn
     resolved_device = _resolve_device(torch, device)
@@ -166,6 +172,7 @@ def recognize_fen_cnn_result(
         save_debug_board(debug_dir, board_image, squares)
 
     board: list[list[str]] = []
+    review_squares = []
     with torch.no_grad():
         for row_index, row in enumerate(squares):
             fen_row: list[str] = []
@@ -175,13 +182,23 @@ def recognize_fen_cnn_result(
                 probabilities = torch.softmax(logits, dim=1)
                 score, prediction = torch.max(probabilities, dim=1)
                 index = int(prediction.item())
-                class_name = class_name_from_prediction(class_names, index, float(score.item()), threshold)
+                empty_score = float(probabilities[0, class_names.index("empty")].item())
+                class_name = class_name_from_prediction(
+                    class_names, index, float(score.item()), threshold, empty_score=empty_score if low_confidence_policy == "review" else None
+                )
+                if class_names[index] != "empty" and float(score.item()) < threshold:
+                    review_squares.append({"screen_row": row_index, "screen_col": col_index,
+                                           "class_name": class_names[index],
+                                           "score": float(score.item()), "empty_score": empty_score})
                 if empty_background[row_index][col_index]:
                     class_name = "empty"
                 if infer_color_from_image and class_name != "empty":
                     class_name = class_name_with_inferred_color(square, class_name)
                 fen_row.append(piece_for_class_name(class_name))
             board.append(fen_row)
+
+    if review_squares:
+        print(f"Review {len(review_squares)} low-confidence piece candidate(s).", flush=True)
 
     if orientation == "auto":
         white_placement = compress_board(orient_board(board, "white"))
@@ -199,10 +216,11 @@ def recognize_fen_cnn_result(
             orientation_source=details["source"],
             orientation_status=details["status"],
             orientation_details=details,
+            review_squares=tuple(review_squares),
         )
 
     board = orient_board(board, orientation)
-    return RecognitionResult(placement=compress_board(board), orientation=orientation)
+    return RecognitionResult(placement=compress_board(board), orientation=orientation, review_squares=tuple(review_squares))
 
 
 def evaluate_cnn(
@@ -364,8 +382,12 @@ class PieceCnn:
         )
 
 
-def class_name_from_prediction(class_names: list[str], index: int, score: float, threshold: float) -> str:
-    if score < threshold:
+def class_name_from_prediction(class_names: list[str], index: int, score: float,
+                               threshold: float, empty_score: float | None = None) -> str:
+    # With full probabilities, distinguish occupancy from piece-type uncertainty.
+    # Calls without empty_score preserve the historical helper contract.
+    confidence = score if empty_score is None else 1.0 - empty_score
+    if confidence < threshold:
         return "empty"
     return class_names[index]
 

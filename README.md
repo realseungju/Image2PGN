@@ -776,3 +776,13 @@ placement candidates and the evidence. Position scores are not probabilities.
 Use `--orientation white` or `--orientation black` to override auto without OCR.
 This determines the side at the bottom, not the side to move, castling rights,
 or game history. CNN weights and board detection are unchanged by this feature.
+
+### Low-confidence review mode
+
+`--low-confidence-policy review` retains low-confidence pieces when total
+nonempty probability meets the threshold, and prints review warnings.
+Python `RecognitionResult.review_squares` preserves screen coordinates and scores.
+This experimental mode may restore UI false positives. Default `empty` preserves
+previous suppression. A single pawn no longer supplies the home-rank orientation
+prior. Two consistent coordinates may guide an uncertain position as estimated;
+three still provide stronger coordinate-supported status. FEN history is unknown.

@@ -322,6 +322,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     for image_parser in (fen_cnn, analyze_image):
         image_parser.add_argument("--board-detector", choices=("grid", "legacy"), default="legacy", help="Opt in to 8x8 screenshot pattern search; default preserves the original contour/center crop.")
+        image_parser.add_argument("--low-confidence-policy", choices=("empty", "review"), default="empty", help="empty: suppress low confidence; review: retain occupied candidates and print review warnings (experimental).")
         image_parser.add_argument("--background-filter", action="store_true", help="Opt in to board-context empty-square suppression (experimental).")
 
     return parser
@@ -488,6 +489,7 @@ def main() -> None:
             infer_color_from_image=args.infer_color_from_image,
             board_detector=args.board_detector,
             suppress_empty_background=args.background_filter,
+            low_confidence_policy=args.low_confidence_policy,
         )
         if args.placement_only:
             print(placement)
@@ -520,6 +522,7 @@ def main() -> None:
             infer_color_from_image=args.infer_color_from_image,
             board_detector=args.board_detector,
             suppress_empty_background=args.background_filter,
+            low_confidence_policy=args.low_confidence_policy,
         )
         fen = f"{recognition.placement} {args.side_to_move} - - 0 1"
         analysis = analyze_fen(

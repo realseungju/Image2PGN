@@ -12,7 +12,7 @@ import numpy as np
 from .fen import expand_placement, score_piece_placement
 
 
-def coordinate_decision(observations):
+def coordinate_decision(observations, minimum=3):
     votes = {"white": set(), "black": set()}
     for observation in observations:
         axis = observation["axis"]
@@ -27,7 +27,7 @@ def coordinate_decision(observations):
     if votes["white"] and votes["black"]:
         return None, "conflicting_coordinates"
     for direction in ("white", "black"):
-        if any(sum(a == axis for a, _ in votes[direction]) >= 3 for axis in ("file", "rank")):
+        if any(sum(a == axis for a, _ in votes[direction]) >= minimum for axis in ("file", "rank")):
             return direction, "consistent_coordinates"
     return None, "insufficient_coordinates"
 
@@ -43,7 +43,7 @@ def position_estimate(white, black):
         ]
         # A weak home-side prior, never a rule that advanced pawns are illegal.
         scores[direction] = float(score_piece_placement(placement)) + (
-            4 * sum(terms) / len(terms) if terms else 0
+            4 * sum(terms) / len(terms) if len(terms) >= 2 else 0
         )
         pawn_counts[direction] = len(terms)
         # Side to move is unknown; either side must be allowed by this check.
@@ -142,4 +142,9 @@ def resolve_orientation(white, black, board_image=None, observations=None):
     if coordinate:
         estimate.update(orientation=coordinate, source="coordinates",
                         status="coordinate_supported", reason=reason)
+    elif estimate["status"] == "uncertain":
+        partial, _ = coordinate_decision(observations, minimum=2)
+        if partial:
+            estimate.update(orientation=partial, source="partial_coordinates",
+                            status="estimated", reason="two_coordinates_support_uncertain_position")
     return estimate

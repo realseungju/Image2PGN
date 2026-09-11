@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from dataclasses import dataclass
 
 import cv2
 import numpy as np
@@ -17,30 +18,48 @@ def load_image(path: Path) -> np.ndarray:
     return image
 
 
+@dataclass(frozen=True)
+class BoardDetectionResult:
+    image: np.ndarray
+    details: dict
+
+
 def warp_board(image: np.ndarray, output_size: int = BOARD_SIZE, *, detector: str = "legacy") -> np.ndarray:
+    """Compatibility API; callers needing provenance use warp_board_result."""
+    return warp_board_result(image, output_size, detector=detector).image
+
+
+def warp_board_result(image: np.ndarray, output_size: int = BOARD_SIZE, *, detector: str = "legacy") -> BoardDetectionResult:
     if detector not in {"grid", "legacy"}:
         raise ValueError("detector must be 'grid' or 'legacy'.")
+    details = {"requested_detector": detector, "method": None, "bounds": None,
+               "corners": None, "fallback_reason": None, "requires_review": True,
+               "status": "review_required"}
     if detector == "grid":
         bounds = find_screenshot_board(image)
         if bounds is not None:
             x, y, width, height = bounds
-            return cv2.resize(image[y:y + height, x:x + width], (output_size, output_size), interpolation=cv2.INTER_AREA)
+            details.update(method="grid", bounds=[int(v) for v in bounds],
+                           requires_review=False, status="candidate")
+            crop = cv2.resize(image[y:y + height, x:x + width], (output_size, output_size), interpolation=cv2.INTER_AREA)
+            return BoardDetectionResult(crop, details)
+        details["fallback_reason"] = "grid_pattern_not_found"
     contour = _find_board_contour(image)
     if contour is None:
-        return _center_square_crop(image, output_size)
+        height, width = image.shape[:2]
+        side = min(height, width)
+        details.update(method="center", bounds=[(width-side)//2, (height-side)//2, side, side],
+                       fallback_reason="grid_and_contour_not_found" if detector == "grid" else "contour_not_found")
+        return BoardDetectionResult(_center_square_crop(image, output_size), details)
 
     points = _order_points(contour.reshape(4, 2).astype("float32"))
+    details.update(method="contour", corners=points.tolist())
     target = np.array(
-        [
-            [0, 0],
-            [output_size - 1, 0],
-            [output_size - 1, output_size - 1],
-            [0, output_size - 1],
-        ],
+        [[0, 0], [output_size - 1, 0], [output_size - 1, output_size - 1], [0, output_size - 1]],
         dtype="float32",
     )
     matrix = cv2.getPerspectiveTransform(points, target)
-    return cv2.warpPerspective(image, matrix, (output_size, output_size))
+    return BoardDetectionResult(cv2.warpPerspective(image, matrix, (output_size, output_size)), details)
 
 
 def _checker_template(width: int, height: int) -> np.ndarray:

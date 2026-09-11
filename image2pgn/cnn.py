@@ -8,7 +8,7 @@ from collections import defaultdict
 import cv2
 import numpy as np
 
-from .board import background_empty_squares, load_image, save_debug_board, split_squares, warp_board
+from .board import background_empty_squares, load_image, save_debug_board, split_squares, warp_board_result
 from .fen import compress_board, orient_board
 from .orientation import resolve_orientation
 from .pieces import CLASS_NAMES, piece_for_class_name
@@ -38,6 +38,7 @@ class RecognitionResult:
     orientation_status: str | None = None
     orientation_details: dict | None = None
     review_squares: tuple[dict, ...] = ()
+    board_details: dict | None = None
 
 
 def train_cnn(config: TrainConfig) -> None:
@@ -164,12 +165,19 @@ def recognize_fen_cnn_result(
     model.eval()
 
     image = load_image(image_path)
-    board_image = warp_board(image, detector=board_detector)
+    detection = warp_board_result(image, detector=board_detector)
+    board_image = detection.image
+    if detection.details["requires_review"]:
+        print(f"Board requires review: method={detection.details['method']} "
+              f"reason={detection.details['fallback_reason'] or 'contour_is_not_board_confirmation'}", flush=True)
     squares = split_squares(board_image)
     empty_background = background_empty_squares(squares) if suppress_empty_background else [[False] * 8 for _ in range(8)]
 
     if debug_dir is not None:
         save_debug_board(debug_dir, board_image, squares)
+        (debug_dir / "board_detection.json").write_text(
+            json.dumps(detection.details, indent=2), encoding="utf-8"
+        )
 
     board: list[list[str]] = []
     review_squares = []
@@ -217,10 +225,11 @@ def recognize_fen_cnn_result(
             orientation_status=details["status"],
             orientation_details=details,
             review_squares=tuple(review_squares),
+            board_details=detection.details,
         )
 
     board = orient_board(board, orientation)
-    return RecognitionResult(placement=compress_board(board), orientation=orientation, review_squares=tuple(review_squares))
+    return RecognitionResult(placement=compress_board(board), orientation=orientation, review_squares=tuple(review_squares), board_details=detection.details)
 
 
 def evaluate_cnn(

@@ -786,3 +786,12 @@ This experimental mode may restore UI false positives. Default `empty` preserves
 previous suppression. A single pawn no longer supplies the home-rank orientation
 prior. Two consistent coordinates may guide an uncertain position as estimated;
 three still provide stronger coordinate-supported status. FEN history is unknown.
+
+### Board detection diagnostics
+
+Python `warp_board_result` returns the crop plus original bounds/corners, actual
+method (`grid`, `contour`, `center`), fallback reason and review status.
+`warp_board` remains compatible. CNN results include `board_details`; fallback
+paths print a review warning. `--debug-dir` also writes `board_detection.json`.
+A grid candidate is not proof of correctness. Contour/center paths require review;
+this release reports the condition but does not block FEN or engine execution.

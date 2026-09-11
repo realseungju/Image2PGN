@@ -795,3 +795,35 @@ method (`grid`, `contour`, `center`), fallback reason and review status.
 paths print a review warning. `--debug-dir` also writes `board_detection.json`.
 A grid candidate is not proof of correctness. Contour/center paths require review;
 this release reports the condition but does not block FEN or engine execution.
+
+### Offline board-corner review
+
+Create a self-contained HTML page with the original image, editable corners,
+a projected 8x8 grid, and a rectified preview:
+
+```powershell
+python -m image2pgn board-review --image screenshot.jpg --out board-review.html
+```
+
+Open the page, move the four corners in screen TL/TR/BR/BL order, confirm that
+the complete board boundary is visible, and download the corner JSON. Numeric
+fields and arrow keys are supported (Shift moves 10 pixels). Reset and JSON
+import are available; editing clears confirmation. The incomplete-board switch
+blocks export. Hidden pieces cannot be recovered by adjusting boundaries.
+
+Apply the downloaded JSON to recognition:
+
+```powershell
+python -m image2pgn fen-cnn --image screenshot.jpg --model model.pt --orientation auto --threshold 0.5 --background-filter --board-corners screenshot-corners.json
+```
+
+The correction must match the original image hash and dimensions. Unconfirmed,
+incomplete, out-of-bounds, crossed or degenerate corners are rejected. Results
+record `method=manual` and `status=boundary_reviewed`; these refer only to the
+boundary, not piece accuracy or game-state metadata. Without `--board-corners`,
+the previous detection path is unchanged. The HTML performs local preview and
+coordinate export only; CNN inference runs through the command above.
+
+The existing optional analysis overlay still crops independently. Reusing the
+reviewed board in that overlay is a separate pending step; do not treat its
+arrows as validated for a manually corrected crop yet.

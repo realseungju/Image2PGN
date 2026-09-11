@@ -23,6 +23,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    board_review = subparsers.add_parser("board-review", help="Create an offline board-corner review page.")
+    board_review.add_argument("--image", required=True, type=Path)
+    board_review.add_argument("--out", required=True, type=Path)
+
     learn = subparsers.add_parser("learn", help="Create piece templates from a labeled board image.")
     learn.add_argument("--image", required=True, type=Path, help="Path to a labeled chessboard image.")
     learn.add_argument("--fen", required=True, help="Piece-placement FEN or full FEN for the image.")
@@ -321,6 +325,7 @@ def build_parser() -> argparse.ArgumentParser:
     analyze_image.add_argument("--visual-out", type=Path, help="Optional PNG path for a static visual analysis overlay.")
 
     for image_parser in (fen_cnn, analyze_image):
+        image_parser.add_argument("--board-corners", type=Path, help="Reviewed corner JSON from board-review; overrides automatic crop.")
         image_parser.add_argument("--board-detector", choices=("grid", "legacy"), default="legacy", help="Opt in to 8x8 screenshot pattern search; default preserves the original contour/center crop.")
         image_parser.add_argument("--low-confidence-policy", choices=("empty", "review"), default="empty", help="empty: suppress low confidence; review: retain occupied candidates and print review warnings (experimental).")
         image_parser.add_argument("--background-filter", action="store_true", help="Opt in to board-context empty-square suppression (experimental).")
@@ -331,6 +336,11 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
+    if args.command == "board-review":
+        from .board_review import build_review
+        build_review(args.image, args.out)
+        print(f"Board review: {args.out.resolve()}")
+        return
 
     if args.command == "learn":
         count = learn_templates(
@@ -490,6 +500,7 @@ def main() -> None:
             board_detector=args.board_detector,
             suppress_empty_background=args.background_filter,
             low_confidence_policy=args.low_confidence_policy,
+            board_corners=args.board_corners,
         )
         if args.placement_only:
             print(placement)
@@ -523,6 +534,7 @@ def main() -> None:
             board_detector=args.board_detector,
             suppress_empty_background=args.background_filter,
             low_confidence_policy=args.low_confidence_policy,
+            board_corners=args.board_corners,
         )
         fen = f"{recognition.placement} {args.side_to_move} - - 0 1"
         analysis = analyze_fen(

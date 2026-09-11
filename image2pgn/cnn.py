@@ -9,6 +9,8 @@ import cv2
 import numpy as np
 
 from .board import background_empty_squares, load_image, save_debug_board, split_squares, warp_board_result
+from .board import BoardDetectionResult
+from .board_review import load_correction, corrected_board
 from .fen import compress_board, orient_board
 from .orientation import resolve_orientation
 from .pieces import CLASS_NAMES, piece_for_class_name
@@ -125,6 +127,7 @@ def recognize_fen_cnn(
     board_detector: str = "legacy",
     suppress_empty_background: bool = False,
     low_confidence_policy: str = "empty",
+    board_corners: Path | None = None,
 ) -> str:
     return recognize_fen_cnn_result(
         image_path=image_path,
@@ -137,6 +140,7 @@ def recognize_fen_cnn(
         board_detector=board_detector,
         suppress_empty_background=suppress_empty_background,
         low_confidence_policy=low_confidence_policy,
+        board_corners=board_corners,
     ).placement
 
 
@@ -151,6 +155,7 @@ def recognize_fen_cnn_result(
     board_detector: str = "legacy",
     suppress_empty_background: bool = False,
     low_confidence_policy: str = "empty",
+    board_corners: Path | None = None,
 ) -> RecognitionResult:
     if low_confidence_policy not in ("empty", "review"):
         raise ValueError("low_confidence_policy must be empty or review")
@@ -165,7 +170,15 @@ def recognize_fen_cnn_result(
     model.eval()
 
     image = load_image(image_path)
-    detection = warp_board_result(image, detector=board_detector)
+    if board_corners is not None:
+        corners = load_correction(board_corners, image_path, image)
+        detection = BoardDetectionResult(corrected_board(image, corners), {
+            "requested_detector": board_detector, "method": "manual", "bounds": None,
+            "corners": corners.tolist(), "fallback_reason": None,
+            "requires_review": False, "status": "boundary_reviewed",
+        })
+    else:
+        detection = warp_board_result(image, detector=board_detector)
     board_image = detection.image
     if detection.details["requires_review"]:
         print(f"Board requires review: method={detection.details['method']} "

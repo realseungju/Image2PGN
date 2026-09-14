@@ -535,6 +535,7 @@ def main() -> None:
             suppress_empty_background=args.background_filter,
             low_confidence_policy=args.low_confidence_policy,
             board_corners=args.board_corners,
+            retain_board_image=args.visual_out is not None,
         )
         fen = f"{recognition.placement} {args.side_to_move} - - 0 1"
         analysis = analyze_fen(
@@ -551,6 +552,7 @@ def main() -> None:
                 analysis=analysis,
                 orientation=recognition.orientation,
                 output_path=args.visual_out,
+                board_image=recognition.board_image,
             )
             print(f"visual saved to {args.visual_out}")
         return

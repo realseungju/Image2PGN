@@ -824,6 +824,9 @@ boundary, not piece accuracy or game-state metadata. Without `--board-corners`,
 the previous detection path is unchanged. The HTML performs local preview and
 coordinate export only; CNN inference runs through the command above.
 
-The existing optional analysis overlay still crops independently. Reusing the
-reviewed board in that overlay is a separate pending step; do not treat its
-arrows as validated for a manually corrected crop yet.
+`analyze-image --visual-out` now reuses the exact recognized board pixels and
+orientation, including `--board-corners`, instead of detecting the board again.
+The renderer draws on a copy. Python callers can request `retain_board_image=True`
+and pass `result.board_image` to `save_analysis_overlay(..., board_image=...)`.
+This opt-in array is not JSON serializable; omit it from metadata exports.
+Without retention, existing metadata results keep `board_image=None`.

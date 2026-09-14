@@ -22,8 +22,13 @@ def save_analysis_overlay(
     analysis: PositionAnalysis,
     orientation: str,
     output_path: Path,
+    *,
+    board_image: np.ndarray | None = None,
 ) -> None:
-    board = warp_board(load_image(image_path))
+    # Prefer the exact pixels used by recognition, including manual correction.
+    board = board_image if board_image is not None else warp_board(load_image(image_path))
+    if board.ndim != 3 or board.shape[2] != 3 or board.shape[0] != board.shape[1]:
+        raise ValueError("Overlay requires a square BGR board image")
     board = _draw_candidate_moves(board, analysis, orientation)
     board = _draw_grid(board)
     panel = _render_panel(analysis, board.shape[0])

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from collections import defaultdict
 
@@ -41,6 +41,7 @@ class RecognitionResult:
     orientation_details: dict | None = None
     review_squares: tuple[dict, ...] = ()
     board_details: dict | None = None
+    board_image: np.ndarray | None = field(default=None, repr=False, compare=False)
 
 
 def train_cnn(config: TrainConfig) -> None:
@@ -128,6 +129,7 @@ def recognize_fen_cnn(
     suppress_empty_background: bool = False,
     low_confidence_policy: str = "empty",
     board_corners: Path | None = None,
+    retain_board_image: bool = False,
 ) -> str:
     return recognize_fen_cnn_result(
         image_path=image_path,
@@ -141,6 +143,7 @@ def recognize_fen_cnn(
         suppress_empty_background=suppress_empty_background,
         low_confidence_policy=low_confidence_policy,
         board_corners=board_corners,
+        retain_board_image=retain_board_image,
     ).placement
 
 
@@ -156,6 +159,7 @@ def recognize_fen_cnn_result(
     suppress_empty_background: bool = False,
     low_confidence_policy: str = "empty",
     board_corners: Path | None = None,
+    retain_board_image: bool = False,
 ) -> RecognitionResult:
     if low_confidence_policy not in ("empty", "review"):
         raise ValueError("low_confidence_policy must be empty or review")
@@ -239,10 +243,11 @@ def recognize_fen_cnn_result(
             orientation_details=details,
             review_squares=tuple(review_squares),
             board_details=detection.details,
+            board_image=board_image if retain_board_image else None,
         )
 
     board = orient_board(board, orientation)
-    return RecognitionResult(placement=compress_board(board), orientation=orientation, review_squares=tuple(review_squares), board_details=detection.details)
+    return RecognitionResult(placement=compress_board(board), orientation=orientation, review_squares=tuple(review_squares), board_details=detection.details, board_image=board_image if retain_board_image else None)
 
 
 def evaluate_cnn(

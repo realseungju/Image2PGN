@@ -12,3 +12,4 @@ chess>=1.11
 # Board diagnostics use existing dependencies and standard-library dataclasses.
 # Offline corner review reuses OpenCV/NumPy; browser code has no external dependencies.
 # Multiscale board proposals reuse OpenCV/NumPy; no new dependencies.
+# Full-grid validation and candidate selection reuse OpenCV/NumPy.

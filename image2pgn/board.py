@@ -30,8 +30,20 @@ def warp_board(image: np.ndarray, output_size: int = BOARD_SIZE, *, detector: st
 
 
 def warp_board_result(image: np.ndarray, output_size: int = BOARD_SIZE, *, detector: str = "legacy") -> BoardDetectionResult:
+    if detector == "grid-v2":
+        from .board_selection import select_board
+        bounds, diagnostics = select_board(image)
+        if bounds is not None:
+            x, y, width, height = bounds
+            details = dict(diagnostics, requested_detector=detector, method="grid-v2", bounds=list(bounds), corners=None, fallback_reason=None, status="review_required" if diagnostics["requires_review"] else "candidate")
+            crop = cv2.resize(image[y:y+height, x:x+width], (output_size, output_size), interpolation=cv2.INTER_AREA)
+            return BoardDetectionResult(crop, details)
+        fallback = warp_board_result(image, output_size, detector="legacy")
+        details = dict(fallback.details, **diagnostics)
+        details.update(requested_detector=detector, requires_review=True, status="review_required", fallback_reason="no_valid_full_grid")
+        return BoardDetectionResult(fallback.image, details)
     if detector not in {"grid", "legacy"}:
-        raise ValueError("detector must be 'grid' or 'legacy'.")
+        raise ValueError("detector must be 'grid', 'grid-v2' or 'legacy'.")
     details = {"requested_detector": detector, "method": None, "bounds": None,
                "corners": None, "fallback_reason": None, "requires_review": True,
                "status": "review_required"}

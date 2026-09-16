@@ -326,7 +326,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     for image_parser in (fen_cnn, analyze_image):
         image_parser.add_argument("--board-corners", type=Path, help="Reviewed corner JSON from board-review; overrides automatic crop.")
-        image_parser.add_argument("--board-detector", choices=("grid", "legacy"), default="legacy", help="Opt in to 8x8 screenshot pattern search; default preserves the original contour/center crop.")
+        image_parser.add_argument("--board-detector", choices=("grid", "grid-v2", "legacy"), default="legacy", help="Opt in to 8x8 screenshot pattern search; default preserves the original contour/center crop.")
         image_parser.add_argument("--low-confidence-policy", choices=("empty", "review"), default="empty", help="empty: suppress low confidence; review: retain occupied candidates and print review warnings (experimental).")
         image_parser.add_argument("--background-filter", action="store_true", help="Opt in to board-context empty-square suppression (experimental).")
 

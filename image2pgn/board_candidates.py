@@ -41,28 +41,40 @@ def _distinct(candidates, limit):
     return kept
 
 
-def _refine(gray, candidate):
-    # Local native-resolution search, capped at 320 pixels per board side.
+def _refine(gray, candidate, *, resolution=320, padding=.06, step=2):
+    # Local search at a bounded resolution; the selected board may use a finer cap.
     x, y, w, h = candidate.bounds
-    pad = max(4, round(max(w, h) * 0.06))
+    pad = max(4, round(max(w, h) * padding))
     left, top = max(0, x - pad), max(0, y - pad)
     right, bottom = min(gray.shape[1], x + w + pad), min(gray.shape[0], y + h + pad)
-    scale = min(1.0, 320 / max(w, h))
+    scale = min(1.0, resolution / max(w, h))
     roi = cv2.resize(gray[top:bottom, left:right], None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA).astype(np.float32)
     best = candidate
     best_score = -1.0
-    for width in range(max(16, round((w - pad) * scale)), min(roi.shape[1], round((w + pad) * scale)) + 1, 2):
-        for height in range(max(16, round((h - pad) * scale)), min(roi.shape[0], round((h + pad) * scale)) + 1, 2):
-            score, (dx, dy) = _best_checker_match(roi, width, height)
-            if score > best_score:
-                best_score = score
-                bx, by = left + round(dx / scale), top + round(dy / scale)
-                bounds = (bx, by, min(round(width / scale), gray.shape[1] - bx), min(round(height / scale), gray.shape[0] - by))
-                best = BoardCandidate(bounds, float(score))
+    # Coordinate descent avoids a quadratic width-by-height template sweep.
+    current_w, current_h = round(w * scale), round(h * scale)
+    ranges = [range(max(16, round((v - pad) * scale)), min(roi.shape[1-axis], round((v + pad) * scale)) + 1, step) for axis, v in enumerate((w,h))]
+    for _ in range(2):
+        for axis in (0,1):
+            axis_best = -1.0
+            for size in ranges[axis]:
+                width, height = (size,current_h) if axis == 0 else (current_w,size)
+                score, (dx,dy) = _best_checker_match(roi,width,height)
+                if score > axis_best:
+                    axis_best, chosen_size = score, size
+                if score > best_score:
+                    best_score = score
+                    bx, by = left + round(dx / scale), top + round(dy / scale)
+                    bounds = (bx, by, min(round(width / scale), gray.shape[1] - bx), min(round(height / scale), gray.shape[0] - by))
+                    best = BoardCandidate(bounds, float(score))
+            if axis == 0:
+                current_w = chosen_size
+            else:
+                current_h = chosen_size
     return best
 
 
-def find_board_candidates(image: np.ndarray, *, max_candidates: int = 20, min_board_pixels: int = 96) -> list[BoardCandidate]:
+def find_board_candidates(image: np.ndarray, *, max_candidates: int = 20, min_board_pixels: int = 96, max_search_width: int | None = None) -> list[BoardCandidate]:
     """Return diverse proposals in original coordinates, without FEN feedback.
 
     Stage A only: no full-grid validation, contour ranking, or automatic crop
@@ -70,6 +82,8 @@ def find_board_candidates(image: np.ndarray, *, max_candidates: int = 20, min_bo
     """
     if max_candidates < 1 or min_board_pixels < 64:
         raise ValueError("max_candidates must be positive and min_board_pixels >= 64")
+    if max_search_width is not None and max_search_width < 64:
+        raise ValueError("max_search_width must be >= 64")
     if image.ndim != 3 or image.shape[2] != 3 or image.size == 0:
         raise ValueError("image must be a nonempty BGR image")
     source_h, source_w = image.shape[:2]
@@ -83,6 +97,8 @@ def find_board_candidates(image: np.ndarray, *, max_candidates: int = 20, min_bo
     final_width = min(source_w, max(640, int(np.ceil(source_w * 64 / min_board_pixels))))
     while targets[-1] < final_width:
         targets.append(min(targets[-1] * 2, final_width))
+    if max_search_width is not None:
+        targets = sorted(set(min(t, max_search_width) for t in targets))
     for target in targets:
         scale = min(1.0, target / source_w)
         if previous_scale is not None and scale <= previous_scale:

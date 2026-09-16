@@ -830,3 +830,16 @@ The renderer draws on a copy. Python callers can request `retain_board_image=Tru
 and pass `result.board_image` to `save_analysis_overlay(..., board_image=...)`.
 This opt-in array is not JSON serializable; omit it from metadata exports.
 Without retention, existing metadata results keep `board_image=None`.
+
+## Opt-in full-grid selection
+
+Use `--board-detector grid-v2` with `fen-cnn` or `analyze-image` to validate
+checker parity, outer rows/columns and grid-line spacing before choosing a crop.
+A validated existing grid crop is preserved to avoid resampling regressions;
+otherwise multiscale candidates are checked and the largest valid board is chosen.
+A strong grid with an occluded border, competing main boards, or contour/center
+fallback remains marked `requires_review`. Scores are diagnostics, not probabilities.
+The default remains `legacy`; `grid` remains available unchanged. Manual
+`--board-corners` overrides all automatic detection. This option does not change
+CNN weights, orientation, or FEN history fields. Severe perspective, incomplete
+boards and ambiguous checker-pattern UI still need review.

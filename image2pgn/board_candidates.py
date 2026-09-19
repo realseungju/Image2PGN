@@ -13,7 +13,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from .board import _best_checker_match, _checker_template, load_image
+from .board import _best_checker_match, _checker_template_fast, load_image
 
 
 @dataclass(frozen=True)
@@ -54,12 +54,16 @@ def _refine(gray, candidate, *, resolution=320, padding=.06, step=2):
     # Coordinate descent avoids a quadratic width-by-height template sweep.
     current_w, current_h = round(w * scale), round(h * scale)
     ranges = [range(max(16, round((v - pad) * scale)), min(roi.shape[1-axis], round((v + pad) * scale)) + 1, step) for axis, v in enumerate((w,h))]
+    matches = {}
     for _ in range(2):
         for axis in (0,1):
             axis_best = -1.0
             for size in ranges[axis]:
                 width, height = (size,current_h) if axis == 0 else (current_w,size)
-                score, (dx,dy) = _best_checker_match(roi,width,height)
+                key = (width, height)
+                if key not in matches:
+                    matches[key] = _best_checker_match(roi,width,height,fast_template=True)
+                score, (dx,dy) = matches[key]
                 if score > axis_best:
                     axis_best, chosen_size = score, size
                 if score > best_score:
@@ -74,7 +78,7 @@ def _refine(gray, candidate, *, resolution=320, padding=.06, step=2):
     return best
 
 
-def find_board_candidates(image: np.ndarray, *, max_candidates: int = 20, min_board_pixels: int = 96, max_search_width: int | None = None) -> list[BoardCandidate]:
+def find_board_candidates(image: np.ndarray, *, max_candidates: int = 20, min_board_pixels: int = 96, max_search_width: int | None = None, search_step: int = 4, refine: bool = True) -> list[BoardCandidate]:
     """Return diverse proposals in original coordinates, without FEN feedback.
 
     Stage A only: no full-grid validation, contour ranking, or automatic crop
@@ -84,6 +88,8 @@ def find_board_candidates(image: np.ndarray, *, max_candidates: int = 20, min_bo
         raise ValueError("max_candidates must be positive and min_board_pixels >= 64")
     if max_search_width is not None and max_search_width < 64:
         raise ValueError("max_search_width must be >= 64")
+    if search_step < 1:
+        raise ValueError("search_step must be positive")
     if image.ndim != 3 or image.shape[2] != 3 or image.size == 0:
         raise ValueError("image must be a nonempty BGR image")
     source_h, source_w = image.shape[:2]
@@ -108,12 +114,12 @@ def find_board_candidates(image: np.ndarray, *, max_candidates: int = 20, min_bo
         upper = min(work.shape)
         if previous_scale is not None:
             upper = min(upper, int(np.ceil(72 * scale / previous_scale)))
-        for width in range(lower, upper + 1, 4):
+        for width in range(lower, upper + 1, search_step):
             for aspect in (0.92, 1.0, 1.04):
                 height = round(width * aspect)
                 if height > work.shape[0]:
                     continue
-                scores = np.abs(cv2.matchTemplate(work, _checker_template(width, height), cv2.TM_CCOEFF_NORMED))
+                scores = np.abs(cv2.matchTemplate(work, _checker_template_fast(width, height), cv2.TM_CCOEFF_NORMED))
                 for _ in range(3):
                     _, score, _, (x, y) = cv2.minMaxLoc(scores)
                     if score < 0.25:
@@ -125,6 +131,8 @@ def find_board_candidates(image: np.ndarray, *, max_candidates: int = 20, min_bo
                     scores[max(0, y-radius):y+radius+1, max(0, x-radius):x+radius+1] = 0
         previous_scale = scale
     coarse = _distinct(proposals, max_candidates)
+    if not refine:
+        return coarse
     return _distinct([_refine(gray, candidate) for candidate in coarse], max_candidates)
 
 

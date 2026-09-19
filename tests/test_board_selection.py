@@ -3,6 +3,7 @@ import numpy as np
 import pytest
 from image2pgn.board import warp_board_result
 from image2pgn.board_selection import grid_evidence, select_board
+from image2pgn.board_candidates import BoardCandidate
 from image2pgn.cli import build_parser
 
 
@@ -56,3 +57,20 @@ def test_occluded_edge_preserves_strong_grid_with_review(monkeypatch):
     assert bounds==(0,0,256,256)
     assert details['requires_review']
     assert details['selection_reason']=='existing_grid_occluded_edge'
+
+
+@pytest.mark.parametrize('contrast,expected_resolutions',[(80,[320,320]),(34,[320,640])])
+def test_refinement_is_staged_and_640_is_reserved_for_weak_color(monkeypatch,contrast,expected_resolutions):
+    image=board(32)
+    candidate=BoardCandidate((0,0,256,256),.8)
+    calls=[]
+    monkeypatch.setattr('image2pgn.board.find_screenshot_board',lambda image:None)
+    monkeypatch.setattr('image2pgn.board_selection.find_board_candidates',lambda *args,**kwargs:[candidate])
+    monkeypatch.setattr('image2pgn.board_selection.grid_evidence',lambda *args,**kwargs:{'parity':1.,'outer':1.,'lines':1.,'contrast':contrast,'valid':True})
+    def refine(gray,candidate,**kwargs):
+        calls.append(kwargs['resolution'])
+        return candidate
+    monkeypatch.setattr('image2pgn.board_selection._refine',refine)
+    bounds,_=select_board(image)
+    assert bounds==candidate.bounds
+    assert calls==expected_resolutions

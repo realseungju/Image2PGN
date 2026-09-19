@@ -2,7 +2,7 @@
 from dataclasses import asdict
 import cv2
 import numpy as np
-from .board_candidates import BoardCandidate, find_board_candidates, bounds_iou, _refine
+from .board_candidates import BoardCandidate, find_board_candidates, bounds_iou, _refine, _distinct
 
 
 def grid_evidence(image, bounds):
@@ -40,6 +40,26 @@ def grid_evidence(image, bounds):
     return {'parity':parity_score,'outer':outer,'lines':lines,'contrast':contrast,'valid':bool(valid)}
 
 
+def _search_candidates(image, *, max_search_width=None):
+    """Validate cheap coarse proposals before refining expensive local matches.
+
+    A coarse full-grid pass normally identifies the one useful proposal.  If it
+    identifies none, refine every proposal as before so borderline grids keep the
+    original recovery path.
+    """
+    coarse=find_board_candidates(image,max_candidates=5,max_search_width=max_search_width,search_step=8,refine=False)
+    coarse_scored=[dict(asdict(c),evidence=grid_evidence(image,c.bounds)) for c in coarse]
+    promising=[c for c in coarse_scored if c['score']>=.30 and c['evidence']['valid']]
+    if promising:
+        return coarse_scored
+    to_refine=coarse_scored
+    gray=cv2.cvtColor(image,cv2.COLOR_BGR2GRAY)
+    refined=[_refine(gray,BoardCandidate(tuple(c['bounds']),c['score'])) for c in to_refine]
+    refined=_distinct(refined,5)
+    refined_scored=[dict(asdict(c),evidence=grid_evidence(image,c.bounds)) for c in refined]
+    return refined_scored
+
+
 def select_board(image):
     """Return original-coordinate bounds plus auditable selection/review metadata.
 
@@ -57,23 +77,35 @@ def select_board(image):
             review = not evidence['valid']
             return existing, {'candidates':[{'bounds':list(existing),'score':None,'source':'existing_grid','evidence':evidence}], 'selected_evidence':evidence,'expanded_search':False,'requires_review':review,'selection_reason':'existing_grid_occluded_edge' if review else 'existing_grid_validated'}
     # The common path searches at most 640px, refining only five diverse proposals.
-    candidates=find_board_candidates(image,max_candidates=5,max_search_width=640)
-    scored=[dict(asdict(c),evidence=grid_evidence(image,c.bounds)) for c in candidates]
+    scored=_search_candidates(image,max_search_width=640)
     valid=[c for c in scored if c['score']>=.30 and c['evidence']['valid']]
     expanded=False
     if not valid:
         expanded=True
-        candidates=find_board_candidates(image,max_candidates=5)
-        scored=[dict(asdict(c),evidence=grid_evidence(image,c.bounds)) for c in candidates]
+        scored=_search_candidates(image)
         valid=[c for c in scored if c['score']>=.30 and c['evidence']['valid']]
     if not valid:
         return None, {'candidates':scored,'expanded_search':expanded,'requires_review':True,'selection_reason':'no_valid_full_grid'}
     # Area is a prior only after all candidates have passed full-grid evidence.
     valid.sort(key=lambda c:(c['bounds'][2]*c['bounds'][3],c['score']),reverse=True)
     chosen=valid[0]
-    refined=_refine(cv2.cvtColor(image,cv2.COLOR_BGR2GRAY), BoardCandidate(tuple(chosen['bounds']),chosen['score']),resolution=640,padding=.015,step=1)
+    gray=cv2.cvtColor(image,cv2.COLOR_BGR2GRAY)
+    refined=_refine(gray, BoardCandidate(tuple(chosen['bounds']),chosen['score']),resolution=320,padding=.06,step=2)
     refined_evidence=grid_evidence(image,refined.bounds)
     if refined_evidence['valid']:
         chosen=dict(asdict(refined),evidence=refined_evidence)
+        # Weak-color themes have a flatter downscaled correlation surface. Pay
+        # for the established 640px polish only there; strong-color boards use a
+        # narrow 320px pass after the wider coarse correction.
+        if refined_evidence['contrast'] < 50:
+            precise=_refine(gray,refined,resolution=640,padding=.015,step=1)
+            precise_evidence=grid_evidence(image,precise.bounds)
+            if precise_evidence['valid']:
+                chosen=dict(asdict(precise),evidence=precise_evidence)
+        else:
+            polished=_refine(gray,refined,resolution=320,padding=.01,step=1)
+            polished_evidence=grid_evidence(image,polished.bounds)
+            if polished_evidence['valid']:
+                chosen=dict(asdict(polished),evidence=polished_evidence)
     ambiguous=any(bounds_iou(chosen['bounds'],c['bounds'])<.5 and c['bounds'][2]*c['bounds'][3]>=.6*chosen['bounds'][2]*chosen['bounds'][3] for c in valid[1:])
     return tuple(chosen['bounds']), {'candidates':scored,'expanded_search':expanded,'requires_review':bool(ambiguous),'selected_evidence':chosen['evidence'],'selection_reason':'ambiguous_main_board' if ambiguous else 'largest_valid_full_grid'}

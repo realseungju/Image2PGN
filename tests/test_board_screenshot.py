@@ -37,6 +37,15 @@ def test_non_board_has_no_grid_candidate():
     assert warp_board(image, detector="grid").shape == (640,640,3)
 
 
+def test_checker_template_matches_direct_grid_formula():
+    from image2pgn.board import _checker_template_fast
+
+    for width, height in ((16, 16), (93, 87), (640, 608)):
+        rows, columns = np.indices((height, width))
+        direct = (((columns * 8 // width + rows * 8 // height) % 2) * 2 - 1).astype(np.float32)
+        assert np.array_equal(_checker_template_fast(width, height), direct)
+
+
 def test_empty_filter_preserves_small_light_and_dark_pieces():
     board = draw_board(80, texture=True)
     cv2.circle(board, (40, 40), 10, (15,15,15), -1)

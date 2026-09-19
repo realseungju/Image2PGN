@@ -34,3 +34,13 @@ def test_no_evidence_and_small_input():
     assert find_board_candidates(np.zeros((50, 80, 3), np.uint8)) == []
     with pytest.raises(ValueError):
         find_board_candidates(np.zeros((100, 100, 3), np.uint8), max_candidates=0)
+    with pytest.raises(ValueError):
+        find_board_candidates(np.zeros((100, 100, 3), np.uint8), search_step=0)
+
+
+def test_coarse_mode_skips_local_refinement(monkeypatch):
+    image=np.full((400,800,3),35,np.uint8)
+    expected=add_board(image,43,71,16)
+    monkeypatch.setattr('image2pgn.board_candidates._refine',lambda *args,**kwargs:pytest.fail('unexpected refinement'))
+    found=find_board_candidates(image,refine=False)
+    assert any(bounds_iou(candidate.bounds,expected)>=.90 for candidate in found[:5])

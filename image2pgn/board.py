@@ -79,8 +79,18 @@ def _checker_template(width: int, height: int) -> np.ndarray:
     return (((cols * 8 // width + rows * 8 // height) % 2) * 2 - 1).astype(np.float32)
 
 
-def _best_checker_match(gray: np.ndarray, width: int, height: int):
-    scores = cv2.matchTemplate(gray, _checker_template(width, height), cv2.TM_CCOEFF_NORMED)
+def _checker_template_fast(width: int, height: int) -> np.ndarray:
+    # The checker is separable: alternating row and column signs multiply to
+    # the same pattern as (row_band + column_band) % 2.  Building two 1-D
+    # vectors avoids the two full-size index grids created for every match.
+    columns = ((np.arange(width) * 8 // width) % 2) * 2 - 1
+    rows = ((np.arange(height) * 8 // height) % 2) * 2 - 1
+    return -np.multiply.outer(rows, columns).astype(np.float32)
+
+
+def _best_checker_match(gray: np.ndarray, width: int, height: int, *, fast_template: bool = False):
+    template = _checker_template_fast(width, height) if fast_template else _checker_template(width, height)
+    scores = cv2.matchTemplate(gray, template, cv2.TM_CCOEFF_NORMED)
     low, high, low_at, high_at = cv2.minMaxLoc(scores)
     return (-low, low_at) if -low > high else (high, high_at)
 

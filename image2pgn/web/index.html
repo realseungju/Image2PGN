@@ -4,40 +4,39 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ChessLens · Screenshot analysis</title>
-  <link rel="stylesheet" href="/assets/styles.css">
+  <link rel="stylesheet" href="/assets/styles.css?v=4">
 </head>
 <body>
   <div class="app-shell">
     <header class="appbar">
       <a class="brand" href="/" aria-label="ChessLens home"><span class="brand-mark" aria-hidden="true">⌗</span><span>ChessLens</span></a>
-      <nav class="app-nav" aria-label="Primary navigation"><span class="active">New analysis</span></nav>
+      <nav class="app-nav" aria-label="Primary navigation"><button class="nav-action active" id="new-analysis-button" type="button">New analysis</button></nav>
       <div class="engine-state"><span class="state-dot" aria-hidden="true"></span><span>Local engine ready</span></div>
     </header>
 
     <div class="workspace">
       <aside class="source-rail" aria-label="Uploaded images">
         <label class="rail-add" for="image-input" aria-label="Add screenshot">＋</label>
-        <div class="upload-preview hidden" id="upload-preview">
-          <img id="source-preview" alt="Uploaded chess screenshot">
-          <strong id="file-name"></strong>
-          <span id="file-size"></span>
-        </div>
-        <div class="normalized-preview hidden" id="normalized-preview">
-          <img id="normalized-board" alt="Normalized detected board">
-          <span>Board</span>
-        </div>
+        <div class="source-list" id="source-list"></div>
       </aside>
 
       <main class="board-stage">
         <section class="upload-stage" id="upload-stage" aria-labelledby="upload-title">
           <label class="dropzone" id="dropzone">
-            <input id="image-input" type="file" accept="image/png,image/jpeg">
+            <input id="image-input" type="file" accept="image/png,image/jpeg" multiple>
             <span class="dropzone-icon" aria-hidden="true">＋</span>
             <h1 id="upload-title">Drop a chess screenshot</h1>
             <p>PNG or JPEG · up to 10 MiB</p>
-            <small>A full-screen capture is fine. grid-v2 will locate the 8×8 board.</small>
+            <small>Select one or more images. grid-v2 detects each board automatically.</small>
           </label>
-          <button class="primary-action hidden" id="recognize-button" type="button">Detect board <span>→</span></button>
+        </section>
+
+        <section class="processing-stage hidden" id="processing-stage" aria-live="polite">
+          <span class="processing-mark" aria-hidden="true"></span>
+          <p class="eyebrow" id="processing-label">Detecting board</p>
+          <h1 id="processing-title">Finding the 8×8 grid…</h1>
+          <p id="processing-copy">grid-v2 is locating the board and classifying every square.</p>
+          <button class="quiet-action hidden" id="retry-button" type="button">Retry detection</button>
         </section>
 
         <section class="review-section hidden" id="review-section" aria-labelledby="review-title">
@@ -96,6 +95,6 @@
     </div>
   </div>
   <div class="toast hidden" id="toast" role="status"></div>
-  <script src="/assets/app.js"></script>
+  <script src="/assets/app.js?v=4"></script>
 </body>
 </html>

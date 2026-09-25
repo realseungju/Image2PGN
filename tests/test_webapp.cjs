@@ -1,5 +1,5 @@
 const assert=require('assert');
-const {expandPlacement,compressBoard,rotateBoard,analysisSummary,themeLabel,deltaLabel,noticeLabel}=require('../image2pgn/web/app.js');
+const {expandPlacement,compressBoard,rotateBoard,analysisSummary,themeLabel,deltaLabel,noticeLabel,statusLabel}=require('../image2pgn/web/app.js');
 const start='rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR';
 assert.strictEqual(compressBoard(expandPlacement(start)),start);
 assert.strictEqual(compressBoard(rotateBoard(expandPlacement('7k/8/8/8/8/8/8/K7'))),'7K/8/8/8/8/8/8/k7');
@@ -8,4 +8,6 @@ assert.strictEqual(themeLabel('fights for the center'),'Center control');
 assert.strictEqual(deltaLabel('-0.14 vs best'),'-0.14 vs best');
 assert.strictEqual(noticeLabel('Castling rights are present; verify them if the FEN came from a single screenshot.'),'Castling rights are present; verify them if the FEN came from a single screenshot.');
 assert.strictEqual(analysisSummary({evaluation:'+0.32',moves:[{san:'e4',mate:null,score_cp:32}]}),"e4 is Stockfish's top choice. From the side-to-move perspective, this is a balanced position.");
+assert.strictEqual(statusLabel('queued'),'Queued');
+assert.strictEqual(statusLabel('detected'),'Ready');
 console.log('webapp JS tests passed');

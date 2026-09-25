@@ -20,8 +20,31 @@ const THEME_LABELS = {
 
 let board = Array.from({ length: 8 }, () => Array(8).fill("."));
 let selectedPiece = ".";
-let sourceFile = null;
-let sourceUrl = null;
+let analysisItems = [];
+let activeItemId = null;
+let nextItemId = 1;
+let workspaceGeneration = 1;
+let recognitionQueue = Promise.resolve();
+
+function blankBoard() {
+  return Array.from({ length: 8 }, () => Array(8).fill("."));
+}
+
+function copyBoard(value) {
+  return value.map((row) => row.slice());
+}
+
+function defaultSetup() {
+  return { side: "w", castling: "-", enPassant: "-", halfmove: "0", fullmove: "1", confirmed: false };
+}
+
+function activeItem() {
+  return analysisItems.find((item) => item.id === activeItemId) || null;
+}
+
+function statusLabel(status) {
+  return { queued: "Queued", detecting: "Detecting", detected: "Ready", error: "Error" }[status] || status;
+}
 
 function expandPlacement(placement) {
   const ranks = placement.trim().split("/");
@@ -78,6 +101,27 @@ function formatBytes(bytes) {
     : `${(bytes / 1048576).toFixed(1)} MiB`;
 }
 
+function readSetup() {
+  return {
+    side: qs("side").value,
+    castling: qs("castling").value,
+    enPassant: qs("en-passant").value,
+    halfmove: qs("halfmove").value,
+    fullmove: qs("fullmove").value,
+    confirmed: qs("confirm-history").checked,
+  };
+}
+
+function writeSetup(setup) {
+  qs("side").value = setup.side;
+  qs("castling").value = setup.castling;
+  qs("en-passant").value = setup.enPassant;
+  qs("halfmove").value = setup.halfmove;
+  qs("fullmove").value = setup.fullmove;
+  qs("confirm-history").checked = setup.confirmed;
+  qs("analyze-button").disabled = !setup.confirmed;
+}
+
 function fullFen() {
   return `${compressBoard(board)} ${qs("side").value} ${qs("castling").value.trim() || "-"} ${qs("en-passant").value.trim() || "-"} ${qs("halfmove").value || 0} ${qs("fullmove").value || 1}`;
 }
@@ -85,6 +129,17 @@ function fullFen() {
 function syncFen() {
   qs("placement").value = compressBoard(board);
   qs("full-fen").textContent = fullFen();
+}
+
+function rememberPosition({ invalidateAnalysis = false } = {}) {
+  const item = activeItem();
+  if (!item || item.status !== "detected") return;
+  item.board = copyBoard(board);
+  item.setup = readSetup();
+  if (invalidateAnalysis) {
+    item.analysis = null;
+    item.analysisFen = null;
+  }
 }
 
 function analysisSummary(result) {
@@ -145,6 +200,7 @@ function renderBoard() {
       board[rank][file] = selectedPiece;
       renderBoard();
       syncFen();
+      rememberPosition({ invalidateAnalysis: true });
     });
     root.append(square);
   }));
@@ -168,90 +224,204 @@ function renderPalette() {
   });
 }
 
-function resetForNewFile() {
+function showEmptyWorkspace() {
   qs("upload-stage").classList.remove("hidden");
+  qs("processing-stage").classList.add("hidden");
   qs("review-section").classList.add("hidden");
   qs("analysis-empty").classList.remove("hidden");
   qs("analysis-setup").classList.add("hidden");
   qs("result-section").classList.add("hidden");
-  qs("normalized-preview").classList.add("hidden");
-  qs("confirm-history").checked = false;
-  qs("analyze-button").disabled = true;
 }
 
-function setFile(file) {
-  if (!file) return;
-  sourceFile = file;
-  if (sourceUrl) URL.revokeObjectURL(sourceUrl);
-  sourceUrl = URL.createObjectURL(file);
-  qs("source-preview").src = sourceUrl;
-  qs("file-name").textContent = file.name;
-  qs("file-size").textContent = formatBytes(file.size);
-  qs("upload-preview").classList.remove("hidden");
-  qs("recognize-button").classList.remove("hidden");
-  resetForNewFile();
+function renderSourceList() {
+  const root = qs("source-list");
+  root.innerHTML = "";
+  analysisItems.forEach((item) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `source-card${item.id === activeItemId ? " active" : ""}`;
+    button.setAttribute("aria-label", `${item.file.name} · ${statusLabel(item.status)}`);
+
+    const image = document.createElement("img");
+    image.src = item.sourceUrl;
+    image.alt = "";
+
+    const status = document.createElement("span");
+    status.className = `source-status ${item.status}`;
+    status.textContent = statusLabel(item.status);
+
+    const name = document.createElement("strong");
+    name.textContent = item.file.name;
+
+    const size = document.createElement("span");
+    size.textContent = formatBytes(item.file.size);
+
+    button.append(image, status, name, size);
+    button.addEventListener("click", () => activateItem(item.id));
+    root.append(button);
+  });
 }
 
-async function recognize() {
-  if (!sourceFile) return showToast("Choose an image first.", true);
-  document.body.classList.add("loading");
-  qs("recognize-button").innerHTML = "Detecting… <span>⌛</span>";
-  try {
-    const data = new FormData();
-    data.append("image", sourceFile);
-    const response = await fetch("/api/recognize", { method: "POST", body: data });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.detail || "Board detection failed.");
+function createAnalysisItem(file) {
+  return {
+    id: nextItemId++,
+    generation: workspaceGeneration,
+    file,
+    sourceUrl: URL.createObjectURL(file),
+    status: "queued",
+    board: blankBoard(),
+    recognition: null,
+    setup: defaultSetup(),
+    analysis: null,
+    analysisFen: null,
+    error: null,
+  };
+}
 
-    board = expandPlacement(result.placement);
-    renderBoard();
-    syncFen();
-    qs("normalized-board").src = result.board_image;
-    qs("normalized-preview").classList.remove("hidden");
+function showProcessing(item) {
+  const isError = item.status === "error";
+  const isQueued = item.status === "queued";
+  qs("upload-stage").classList.add("hidden");
+  qs("review-section").classList.add("hidden");
+  qs("processing-stage").classList.remove("hidden");
+  qs("processing-stage").classList.toggle("error", isError);
+  qs("processing-label").textContent = isError ? "Detection failed" : isQueued ? "Queued" : "Detecting board";
+  qs("processing-title").textContent = isError ? `Could not detect ${item.file.name}` : isQueued ? `${item.file.name} is next` : `Detecting ${item.file.name}…`;
+  qs("processing-copy").textContent = isError
+    ? item.error
+    : isQueued
+      ? "Screenshots are processed one at a time to keep model memory stable."
+      : "grid-v2 is locating the board and classifying every square.";
+  qs("retry-button").classList.toggle("hidden", !isError);
+  qs("analysis-empty").classList.remove("hidden");
+  qs("analysis-setup").classList.add("hidden");
+  qs("result-section").classList.add("hidden");
+}
 
-    const details = result.board_details || {};
-    const bounds = (details.bounds || []).join(", ") || "manual review needed";
-    qs("detection-copy").textContent = `${details.method || "unknown detector"} · bounds ${bounds}`;
+function renderRecognition(item) {
+  const result = item.recognition;
+  board = copyBoard(item.board);
+  renderBoard();
+  writeSetup(item.setup);
+  syncFen();
 
-    const badges = qs("recognition-badges");
-    badges.innerHTML = "";
-    [
-      [`${result.orientation || "unknown"} orientation`, result.orientation_status === "uncertain"],
-      [details.method || "unknown detector", Boolean(details.requires_review)],
-      [`${(result.review_squares || []).length} squares to review`, result.review_squares?.length > 0],
-    ].forEach(([label, warning]) => {
-      const badge = document.createElement("span");
-      badge.className = `badge${warning ? " warn" : ""}`;
-      badge.textContent = label;
-      badges.append(badge);
-    });
+  const details = result.board_details || {};
+  const bounds = (details.bounds || []).join(", ") || "manual review needed";
+  qs("detection-copy").textContent = `${details.method || "unknown detector"} · bounds ${bounds}`;
 
-    const warnings = [];
-    if (details.requires_review) warnings.push("The board boundary needs review. Compare the source and normalized board before analysis.");
-    if (result.orientation_status === "uncertain") warnings.push("Board orientation is uncertain. Flip the board if needed.");
-    if (result.review_squares?.length) warnings.push(`${result.review_squares.length} low-confidence squares need manual review.`);
-    const warning = qs("recognition-warning");
-    warning.textContent = warnings.join(" ");
-    warning.classList.toggle("hidden", !warnings.length);
+  const badges = qs("recognition-badges");
+  badges.innerHTML = "";
+  [
+    [`${result.orientation || "unknown"} orientation`, result.orientation_status === "uncertain"],
+    [details.method || "unknown detector", Boolean(details.requires_review)],
+    [`${(result.review_squares || []).length} squares to review`, result.review_squares?.length > 0],
+  ].forEach(([label, warning]) => {
+    const badge = document.createElement("span");
+    badge.className = `badge${warning ? " warn" : ""}`;
+    badge.textContent = label;
+    badges.append(badge);
+  });
 
-    qs("upload-stage").classList.add("hidden");
-    qs("review-section").classList.remove("hidden");
-    qs("analysis-empty").classList.add("hidden");
+  const warnings = [];
+  if (details.requires_review) warnings.push("The board boundary needs review. Compare the screenshot and detected board before analysis.");
+  if (result.orientation_status === "uncertain") warnings.push("Board orientation is uncertain. Flip the board if needed.");
+  if (result.review_squares?.length) warnings.push(`${result.review_squares.length} low-confidence squares need manual review.`);
+  const warning = qs("recognition-warning");
+  warning.textContent = warnings.join(" ");
+  warning.classList.toggle("hidden", !warnings.length);
+
+  qs("upload-stage").classList.add("hidden");
+  qs("processing-stage").classList.add("hidden");
+  qs("review-section").classList.remove("hidden");
+  qs("analysis-empty").classList.add("hidden");
+  if (item.analysis) renderAnalysis(item.analysis, { persist: false, scroll: false });
+  else {
     qs("analysis-setup").classList.remove("hidden");
     qs("result-section").classList.add("hidden");
-    qs("review-section").scrollIntoView({ behavior: "smooth", block: "start" });
-  } catch (error) {
-    showToast(error.message, true);
-  } finally {
-    document.body.classList.remove("loading");
-    qs("recognize-button").innerHTML = "Detect board <span>→</span>";
   }
 }
 
-function renderAnalysis(result) {
+function activateItem(id) {
+  if (activeItemId !== id) rememberPosition();
+  activeItemId = id;
+  const item = activeItem();
+  renderSourceList();
+  if (!item) return showEmptyWorkspace();
+  if (item.status !== "detected") return showProcessing(item);
+  renderRecognition(item);
+}
+
+async function recognizeItem(item) {
+  if (item.generation !== workspaceGeneration) return;
+  item.status = "detecting";
+  item.error = null;
+  if (item.id === activeItemId) showProcessing(item);
+  renderSourceList();
+  try {
+    const data = new FormData();
+    data.append("image", item.file);
+    const response = await fetch("/api/recognize", { method: "POST", body: data });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.detail || "Board detection failed.");
+    if (item.generation !== workspaceGeneration) return;
+    item.recognition = result;
+    item.board = expandPlacement(result.placement);
+    item.status = "detected";
+  } catch (error) {
+    if (item.generation !== workspaceGeneration) return;
+    item.status = "error";
+    item.error = error.message;
+  }
+  if (item.id === activeItemId) activateItem(item.id);
+  else renderSourceList();
+}
+
+function enqueueFiles(files) {
+  const newItems = Array.from(files).map(createAnalysisItem);
+  if (!newItems.length) return;
+  analysisItems.push(...newItems);
+  activateItem(newItems[0].id);
+  newItems.forEach((item) => {
+    recognitionQueue = recognitionQueue.then(() => recognizeItem(item));
+  });
+}
+
+function retryActiveDetection() {
+  const item = activeItem();
+  if (!item || item.status !== "error") return;
+  item.status = "queued";
+  item.error = null;
+  showProcessing(item);
+  renderSourceList();
+  recognitionQueue = recognitionQueue.then(() => recognizeItem(item));
+}
+
+function resetWorkspace() {
+  workspaceGeneration += 1;
+  analysisItems.forEach((item) => URL.revokeObjectURL(item.sourceUrl));
+  analysisItems = [];
+  activeItemId = null;
+  selectedPiece = ".";
+  board = blankBoard();
+  writeSetup(defaultSetup());
+  renderPalette();
+  renderBoard();
+  syncFen();
+  renderSourceList();
+  showEmptyWorkspace();
+  qs("image-input").value = "";
+}
+
+function renderAnalysis(result, { persist = true, scroll = true } = {}) {
+  const item = activeItem();
+  if (persist && item) {
+    item.analysis = result;
+    item.analysisFen = fullFen();
+    item.setup = readSetup();
+  }
   qs("evaluation").textContent = result.evaluation;
   qs("summary").textContent = analysisSummary(result);
-  qs("result-fen").textContent = fullFen();
+  qs("result-fen").textContent = item?.analysisFen || fullFen();
   const track = document.querySelector(".eval-track span");
   const score = Number(result.evaluation_cp || 0);
   track.style.width = `${Math.max(5, Math.min(95, 50 + Math.tanh(score / 400) * 45))}%`;
@@ -310,7 +480,7 @@ function renderAnalysis(result) {
 
   qs("analysis-setup").classList.add("hidden");
   qs("result-section").classList.remove("hidden");
-  qs("result-section").scrollIntoView({ behavior: "smooth", block: "start" });
+  if (scroll) qs("result-section").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 async function analyze() {
@@ -339,7 +509,10 @@ function init() {
   syncFen();
   const input = qs("image-input");
   const dropzone = qs("dropzone");
-  input.addEventListener("change", () => setFile(input.files[0]));
+  input.addEventListener("change", () => {
+    enqueueFiles(input.files);
+    input.value = "";
+  });
   ["dragenter", "dragover"].forEach((name) => dropzone.addEventListener(name, (event) => {
     event.preventDefault();
     dropzone.classList.add("drag");
@@ -348,31 +521,41 @@ function init() {
     event.preventDefault();
     dropzone.classList.remove("drag");
   }));
-  dropzone.addEventListener("drop", (event) => setFile(event.dataTransfer.files[0]));
-  qs("recognize-button").addEventListener("click", recognize);
+  dropzone.addEventListener("drop", (event) => enqueueFiles(event.dataTransfer.files));
+  qs("new-analysis-button").addEventListener("click", resetWorkspace);
+  qs("retry-button").addEventListener("click", retryActiveDetection);
   qs("flip-button").addEventListener("click", () => {
     board = rotateBoard(board);
     renderBoard();
     syncFen();
+    rememberPosition({ invalidateAnalysis: true });
   });
   qs("placement").addEventListener("change", (event) => {
     try {
       board = expandPlacement(event.target.value);
       renderBoard();
       syncFen();
+      rememberPosition({ invalidateAnalysis: true });
     } catch (error) {
       showToast(error.message, true);
       syncFen();
     }
   });
-  ["side", "castling", "en-passant", "halfmove", "fullmove"].forEach((id) => qs(id).addEventListener("input", syncFen));
+  ["side", "castling", "en-passant", "halfmove", "fullmove"].forEach((id) => qs(id).addEventListener("input", () => {
+    syncFen();
+    rememberPosition({ invalidateAnalysis: true });
+  }));
   qs("confirm-history").addEventListener("change", (event) => {
     qs("analyze-button").disabled = !event.target.checked;
+    rememberPosition();
   });
   qs("analyze-button").addEventListener("click", analyze);
   qs("edit-position-button").addEventListener("click", () => {
     qs("result-section").classList.add("hidden");
     qs("analysis-setup").classList.remove("hidden");
+  });
+  window.addEventListener("beforeunload", () => {
+    analysisItems.forEach((item) => URL.revokeObjectURL(item.sourceUrl));
   });
 }
 
@@ -385,4 +568,5 @@ if (typeof module !== "undefined") module.exports = {
   themeLabel,
   deltaLabel,
   noticeLabel,
+  statusLabel,
 };

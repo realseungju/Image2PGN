@@ -1,0 +1,11 @@
+const assert=require('assert');
+const {expandPlacement,compressBoard,rotateBoard,analysisSummary,themeLabel,deltaLabel,noticeLabel}=require('../image2pgn/web/app.js');
+const start='rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR';
+assert.strictEqual(compressBoard(expandPlacement(start)),start);
+assert.strictEqual(compressBoard(rotateBoard(expandPlacement('7k/8/8/8/8/8/8/K7'))),'7K/8/8/8/8/8/8/k7');
+assert.throws(()=>expandPlacement('8/8'));
+assert.strictEqual(themeLabel('fights for the center'),'중앙을 장악합니다');
+assert.strictEqual(deltaLabel('-0.14 vs best'),'최선 대비 -0.14');
+assert.strictEqual(noticeLabel('Castling rights are present; verify them if the FEN came from a single screenshot.'),'스크린샷만으로는 캐슬링 권리를 알 수 없습니다. 입력값을 확인하세요.');
+assert.strictEqual(analysisSummary({evaluation:'+0.32',moves:[{san:'e4',mate:null,score_cp:32}]}),'Stockfish 최우선 후보는 e4입니다. 현재 차례 쪽 기준으로 대체로 균형입니다.');
+console.log('webapp JS tests passed');

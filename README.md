@@ -134,6 +134,20 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
+## Local Web App
+
+Run the upload → FEN review → Stockfish analysis flow locally:
+
+```powershell
+.\.venv\Scripts\python.exe -m image2pgn serve `
+  --model output\ui-negatives-20260910\epoch8.pt `
+  --engine C:\Users\reals\Documents\stockfish\stockfish-windows-x86-64-avx2.exe
+```
+
+Open `http://127.0.0.1:8000`. Uploaded PNG/JPEG files are limited to 10 MiB,
+processed through a temporary file, and deleted after recognition. The page requires
+explicit confirmation of side-to-move and game-history fields before engine analysis.
+
 ## Quick Start: Screenshot to FEN
 
 Recommended current model:

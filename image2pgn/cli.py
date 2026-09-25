@@ -324,6 +324,13 @@ def build_parser() -> argparse.ArgumentParser:
     analyze_image.add_argument("--top", type=int, default=5, help="Number of candidate moves to show.")
     analyze_image.add_argument("--visual-out", type=Path, help="Optional PNG path for a static visual analysis overlay.")
 
+    serve = subparsers.add_parser("serve", help="Run the local ChessLens upload and analysis website.")
+    serve.add_argument("--model", required=True, type=Path, help="Trained CNN .pt model path.")
+    serve.add_argument("--engine", type=Path, help="Path to a UCI engine executable.")
+    serve.add_argument("--device", default="cpu", help="cpu, cuda, or a PyTorch device string.")
+    serve.add_argument("--host", default="127.0.0.1", help="Bind host; local-only by default.")
+    serve.add_argument("--port", type=int, default=8000, help="HTTP port.")
+
     for image_parser in (fen_cnn, analyze_image):
         image_parser.add_argument("--board-corners", type=Path, help="Reviewed corner JSON from board-review; overrides automatic crop.")
         image_parser.add_argument("--board-detector", choices=("grid", "grid-v2", "legacy"), default="legacy", help="Opt in to 8x8 screenshot pattern search; default preserves the original contour/center crop.")
@@ -340,6 +347,12 @@ def main() -> None:
         from .board_review import build_review
         build_review(args.image, args.out)
         print(f"Board review: {args.out.resolve()}")
+        return
+
+    if args.command == "serve":
+        import uvicorn
+        from .webapp import create_app
+        uvicorn.run(create_app(args.model, args.engine, args.device), host=args.host, port=args.port)
         return
 
     if args.command == "learn":

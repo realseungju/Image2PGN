@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ChessLens · Screenshot analysis</title>
-  <link rel="stylesheet" href="/assets/styles.css?v=4">
+  <link rel="stylesheet" href="/assets/styles.css?v=5">
 </head>
 <body>
   <div class="app-shell">
@@ -94,7 +94,27 @@
       </aside>
     </div>
   </div>
+
+  <dialog class="review-dialog" id="square-review-dialog" aria-labelledby="review-dialog-title">
+    <div class="review-dialog-shell">
+      <header class="review-dialog-head">
+        <div>
+          <span>Recognition check</span>
+          <h2 id="review-dialog-title">Review detected squares</h2>
+          <p id="review-dialog-copy"></p>
+        </div>
+        <button class="dialog-close" id="review-close-button" type="button" aria-label="Close review">×</button>
+      </header>
+      <div class="review-list" id="review-list"></div>
+      <footer class="review-dialog-foot">
+        <span id="review-progress"></span>
+        <button class="quiet-action" id="review-accept-button" type="button">Accept current predictions</button>
+        <button class="primary-action" id="review-done-button" type="button">Done reviewing <span>→</span></button>
+      </footer>
+    </div>
+  </dialog>
+
   <div class="toast hidden" id="toast" role="status"></div>
-  <script src="/assets/app.js?v=4"></script>
+  <script src="/assets/app.js?v=5"></script>
 </body>
 </html>

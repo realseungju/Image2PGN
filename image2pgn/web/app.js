@@ -4,6 +4,15 @@ const SYMBOLS = {
   K: "♚", Q: "♛", R: "♜", B: "♝", N: "♞", P: "♟",
   k: "♚", q: "♛", r: "♜", b: "♝", n: "♞", p: "♟",
 };
+const CLASS_TO_PIECE = {
+  empty: ".",
+  white_pawn: "P", white_knight: "N", white_bishop: "B", white_rook: "R", white_queen: "Q", white_king: "K",
+  black_pawn: "p", black_knight: "n", black_bishop: "b", black_rook: "r", black_queen: "q", black_king: "k",
+};
+const PIECE_LABELS = {
+  ".": "empty", P: "white pawn", N: "white knight", B: "white bishop", R: "white rook", Q: "white queen", K: "white king",
+  p: "black pawn", n: "black knight", b: "black bishop", r: "black rook", q: "black queen", k: "black king",
+};
 const THEME_LABELS = {
   "wins or trades material": "Material gain or trade",
   "forces check": "Forcing check",
@@ -44,6 +53,28 @@ function activeItem() {
 
 function statusLabel(status) {
   return { queued: "Queued", detecting: "Detecting", detected: "Ready", error: "Error" }[status] || status;
+}
+
+function reviewKey(review) {
+  return `${review.screen_row}:${review.screen_col}`;
+}
+
+function reviewBoardPosition(review, orientation) {
+  if (orientation === "black") return { row: 7 - review.screen_row, col: 7 - review.screen_col };
+  return { row: review.screen_row, col: review.screen_col };
+}
+
+function boardSquareName(row, col) {
+  return `${String.fromCharCode(97 + col)}${8 - row}`;
+}
+
+function reviewCountLabel(count) {
+  return `${count} ${count === 1 ? "square" : "squares"} to review`;
+}
+
+function unresolvedReviews(item) {
+  if (!item?.recognition) return [];
+  return (item.recognition.review_squares || []).filter((review) => !item.reviewedKeys.has(reviewKey(review)));
 }
 
 function expandPlacement(placement) {
@@ -131,15 +162,21 @@ function syncFen() {
   qs("full-fen").textContent = fullFen();
 }
 
+function invalidateAnalysisForItem(item) {
+  item.analysis = null;
+  item.analysisFen = null;
+  if (item.id === activeItemId) {
+    qs("result-section").classList.add("hidden");
+    qs("analysis-setup").classList.remove("hidden");
+  }
+}
+
 function rememberPosition({ invalidateAnalysis = false } = {}) {
   const item = activeItem();
   if (!item || item.status !== "detected") return;
   item.board = copyBoard(board);
   item.setup = readSetup();
-  if (invalidateAnalysis) {
-    item.analysis = null;
-    item.analysisFen = null;
-  }
+  if (invalidateAnalysis) invalidateAnalysisForItem(item);
 }
 
 function analysisSummary(result) {
@@ -188,19 +225,26 @@ function pieceMark(piece) {
 
 function renderBoard() {
   const root = qs("chessboard");
+  const item = activeItem();
+  const pending = new Set(unresolvedReviews(item).map((review) => {
+    const position = reviewBoardPosition(review, item.recognition.orientation);
+    return `${position.row}:${position.col}`;
+  }));
   root.innerHTML = "";
   board.forEach((row, rank) => row.forEach((piece, file) => {
     const square = document.createElement("button");
     square.type = "button";
-    square.className = `square ${(rank + file) % 2 ? "dark" : "light"}`;
+    square.className = `square ${(rank + file) % 2 ? "dark" : "light"}${pending.has(`${rank}:${file}`) ? " needs-review" : ""}`;
     square.setAttribute("aria-label", `${String.fromCharCode(97 + file)}${8 - rank} ${piece === "." ? "empty" : piece}`);
     const mark = pieceMark(piece);
     if (mark) square.append(mark);
     square.addEventListener("click", () => {
       board[rank][file] = selectedPiece;
+      markReviewAtBoardPosition(rank, file);
       renderBoard();
       syncFen();
       rememberPosition({ invalidateAnalysis: true });
+      updateReviewSummary(activeItem());
     });
     root.append(square);
   }));
@@ -274,6 +318,7 @@ function createAnalysisItem(file) {
     setup: defaultSetup(),
     analysis: null,
     analysisFen: null,
+    reviewedKeys: new Set(),
     error: null,
   };
 }
@@ -298,6 +343,159 @@ function showProcessing(item) {
   qs("result-section").classList.add("hidden");
 }
 
+function markReviewAtBoardPosition(row, col) {
+  const item = activeItem();
+  if (!item?.recognition) return;
+  (item.recognition.review_squares || []).forEach((review) => {
+    const position = reviewBoardPosition(review, item.recognition.orientation);
+    if (position.row === row && position.col === col) item.reviewedKeys.add(reviewKey(review));
+  });
+}
+
+function recognitionWarnings(item) {
+  const result = item.recognition;
+  const details = result.board_details || {};
+  const warnings = [];
+  if (details.requires_review) warnings.push("The board boundary needs review. Compare the screenshot and detected board before analysis.");
+  if (result.orientation_status === "uncertain") warnings.push("Board orientation is uncertain. Flip the board if needed.");
+  const unresolved = unresolvedReviews(item).length;
+  if (unresolved) warnings.push(`${reviewCountLabel(unresolved)}. Open the review window to compare cropped squares.`);
+  return warnings;
+}
+
+function updateReviewSummary(item) {
+  if (!item?.recognition) return;
+  const total = (item.recognition.review_squares || []).length;
+  const unresolved = unresolvedReviews(item).length;
+  const badge = qs("review-badge");
+  if (badge) {
+    badge.textContent = total ? (unresolved ? reviewCountLabel(unresolved) : "Review complete") : "0 squares to review";
+    badge.classList.toggle("warn", unresolved > 0);
+  }
+  const warning = qs("recognition-warning");
+  const warnings = recognitionWarnings(item);
+  warning.textContent = warnings.join(" ");
+  warning.classList.toggle("hidden", !warnings.length);
+}
+
+function paintReviewCrop(canvas, boardImage, review) {
+  const image = new Image();
+  image.addEventListener("load", () => {
+    const context = canvas.getContext("2d");
+    const width = image.naturalWidth / 8;
+    const height = image.naturalHeight / 8;
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    context.drawImage(
+      image,
+      review.screen_col * width,
+      review.screen_row * height,
+      width,
+      height,
+      0,
+      0,
+      canvas.width,
+      canvas.height,
+    );
+  });
+  image.src = boardImage;
+}
+
+function applyReviewChoice(item, review, piece) {
+  const position = reviewBoardPosition(review, item.recognition.orientation);
+  item.board[position.row][position.col] = piece;
+  item.reviewedKeys.add(reviewKey(review));
+  invalidateAnalysisForItem(item);
+  if (item.id === activeItemId) {
+    board = copyBoard(item.board);
+    renderBoard();
+    syncFen();
+    updateReviewSummary(item);
+    renderReviewDialog();
+  }
+}
+
+function renderReviewDialog() {
+  const item = activeItem();
+  if (!item?.recognition) return;
+  const reviews = item.recognition.review_squares || [];
+  const unresolved = unresolvedReviews(item).length;
+  qs("review-dialog-copy").textContent = `${item.file.name} · Crops come from the normalized 8×8 board.`;
+  qs("review-progress").textContent = `${reviews.length - unresolved} of ${reviews.length} reviewed`;
+  qs("review-accept-button").disabled = unresolved === 0;
+
+  const root = qs("review-list");
+  root.innerHTML = "";
+  reviews.forEach((review) => {
+    const position = reviewBoardPosition(review, item.recognition.orientation);
+    const squareName = boardSquareName(position.row, position.col);
+    const reviewed = item.reviewedKeys.has(reviewKey(review));
+    const currentPiece = item.board[position.row][position.col];
+    const predictedPiece = CLASS_TO_PIECE[review.class_name] || currentPiece;
+
+    const card = document.createElement("article");
+    card.className = "review-item";
+
+    const crop = document.createElement("div");
+    crop.className = "review-crop";
+    const canvas = document.createElement("canvas");
+    canvas.width = 180;
+    canvas.height = 180;
+    paintReviewCrop(canvas, item.recognition.board_image, review);
+    const coordinate = document.createElement("span");
+    coordinate.className = "review-coordinate";
+    coordinate.textContent = squareName;
+    crop.append(canvas, coordinate);
+
+    const body = document.createElement("div");
+    body.className = "review-item-body";
+    const title = document.createElement("div");
+    title.className = "review-item-title";
+    const heading = document.createElement("strong");
+    heading.textContent = `${squareName} · ${reviewed ? "Reviewed" : "Check prediction"}`;
+    const confidence = document.createElement("span");
+    confidence.textContent = `${Math.round(review.score * 100)}% model score`;
+    title.append(heading, confidence);
+
+    const copy = document.createElement("p");
+    copy.className = "review-item-copy";
+    copy.textContent = `Predicted ${PIECE_LABELS[predictedPiece] || review.class_name.replaceAll("_", " ")} · empty score ${Math.round(review.empty_score * 100)}%. Choose what the crop actually shows.`;
+
+    const choices = document.createElement("div");
+    choices.className = "review-piece-grid";
+    PIECES.forEach((piece) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = `review-piece-choice${piece === currentPiece ? " selected" : ""}${reviewed && piece === currentPiece ? " reviewed" : ""}`;
+      button.setAttribute("aria-label", `Set ${squareName} to ${PIECE_LABELS[piece]}`);
+      if (piece === ".") button.textContent = "×";
+      else button.append(pieceMark(piece));
+      button.addEventListener("click", () => applyReviewChoice(item, review, piece));
+      choices.append(button);
+    });
+
+    body.append(title, copy, choices);
+    card.append(crop, body);
+    root.append(card);
+  });
+}
+
+function openReviewDialog() {
+  const item = activeItem();
+  if (!item?.recognition?.review_squares?.length) return;
+  renderReviewDialog();
+  qs("square-review-dialog").showModal();
+}
+
+function acceptCurrentReviewPredictions() {
+  const item = activeItem();
+  if (!item?.recognition) return;
+  (item.recognition.review_squares || []).forEach((review) => item.reviewedKeys.add(reviewKey(review)));
+  renderBoard();
+  updateReviewSummary(item);
+  renderReviewDialog();
+}
+
 function renderRecognition(item) {
   const result = item.recognition;
   board = copyBoard(item.board);
@@ -314,21 +512,21 @@ function renderRecognition(item) {
   [
     [`${result.orientation || "unknown"} orientation`, result.orientation_status === "uncertain"],
     [details.method || "unknown detector", Boolean(details.requires_review)],
-    [`${(result.review_squares || []).length} squares to review`, result.review_squares?.length > 0],
   ].forEach(([label, warning]) => {
     const badge = document.createElement("span");
     badge.className = `badge${warning ? " warn" : ""}`;
     badge.textContent = label;
     badges.append(badge);
   });
-
-  const warnings = [];
-  if (details.requires_review) warnings.push("The board boundary needs review. Compare the screenshot and detected board before analysis.");
-  if (result.orientation_status === "uncertain") warnings.push("Board orientation is uncertain. Flip the board if needed.");
-  if (result.review_squares?.length) warnings.push(`${result.review_squares.length} low-confidence squares need manual review.`);
-  const warning = qs("recognition-warning");
-  warning.textContent = warnings.join(" ");
-  warning.classList.toggle("hidden", !warnings.length);
+  const reviewBadge = document.createElement(result.review_squares?.length ? "button" : "span");
+  reviewBadge.id = "review-badge";
+  reviewBadge.className = "badge review-badge";
+  if (result.review_squares?.length) {
+    reviewBadge.type = "button";
+    reviewBadge.addEventListener("click", openReviewDialog);
+  }
+  badges.append(reviewBadge);
+  updateReviewSummary(item);
 
   qs("upload-stage").classList.add("hidden");
   qs("processing-stage").classList.add("hidden");
@@ -366,6 +564,7 @@ async function recognizeItem(item) {
     if (item.generation !== workspaceGeneration) return;
     item.recognition = result;
     item.board = expandPlacement(result.placement);
+    item.reviewedKeys = new Set();
     item.status = "detected";
   } catch (error) {
     if (item.generation !== workspaceGeneration) return;
@@ -397,6 +596,7 @@ function retryActiveDetection() {
 }
 
 function resetWorkspace() {
+  if (qs("square-review-dialog").open) qs("square-review-dialog").close();
   workspaceGeneration += 1;
   analysisItems.forEach((item) => URL.revokeObjectURL(item.sourceUrl));
   analysisItems = [];
@@ -525,10 +725,13 @@ function init() {
   qs("new-analysis-button").addEventListener("click", resetWorkspace);
   qs("retry-button").addEventListener("click", retryActiveDetection);
   qs("flip-button").addEventListener("click", () => {
+    const item = activeItem();
     board = rotateBoard(board);
+    if (item?.recognition) item.recognition.orientation = item.recognition.orientation === "black" ? "white" : "black";
     renderBoard();
     syncFen();
     rememberPosition({ invalidateAnalysis: true });
+    if (item) renderRecognition(item);
   });
   qs("placement").addEventListener("change", (event) => {
     try {
@@ -554,6 +757,12 @@ function init() {
     qs("result-section").classList.add("hidden");
     qs("analysis-setup").classList.remove("hidden");
   });
+  qs("review-close-button").addEventListener("click", () => qs("square-review-dialog").close());
+  qs("review-done-button").addEventListener("click", () => qs("square-review-dialog").close());
+  qs("review-accept-button").addEventListener("click", acceptCurrentReviewPredictions);
+  qs("square-review-dialog").addEventListener("click", (event) => {
+    if (event.target === qs("square-review-dialog")) qs("square-review-dialog").close();
+  });
   window.addEventListener("beforeunload", () => {
     analysisItems.forEach((item) => URL.revokeObjectURL(item.sourceUrl));
   });
@@ -569,4 +778,7 @@ if (typeof module !== "undefined") module.exports = {
   deltaLabel,
   noticeLabel,
   statusLabel,
+  reviewBoardPosition,
+  boardSquareName,
+  reviewCountLabel,
 };

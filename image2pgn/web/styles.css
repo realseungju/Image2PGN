@@ -190,8 +190,10 @@ button { color: inherit; }
 .stage-toolbar p { margin: 4px 0 0; color: var(--muted); font-size: .75rem; }
 .stage-toolbar .quiet-action { margin-left: 2px; }
 .recognition-badges { margin-left: auto; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
-.badge { display: inline-flex; align-items: center; min-height: 28px; padding: 0 9px; border-radius: 999px; background: var(--soft); color: var(--muted); font-size: .67rem; }
+.badge { display: inline-flex; align-items: center; min-height: 28px; padding: 0 9px; border: 0; border-radius: 999px; background: var(--soft); color: var(--muted); font-size: .67rem; }
 .badge.warn { background: #fff0e5; color: #9a4e1d; }
+.review-badge { cursor: pointer; font-weight: 700; }
+.review-badge:hover { box-shadow: inset 0 0 0 1px currentColor; }
 
 .board-wrap { width: min(100%, 720px); margin: auto; }
 .chessboard {
@@ -222,6 +224,7 @@ button { color: inherit; }
 .square.light { background: var(--board-light); }
 .square.dark { background: var(--board-dark); }
 .square:hover::after { content: ""; position: absolute; inset: 4px; border: 3px solid var(--accent); }
+.square.needs-review::before { content: ""; position: absolute; top: 7px; right: 7px; z-index: 2; width: 9px; height: 9px; border: 2px solid rgba(255,255,255,.9); border-radius: 50%; background: #ff8a3d; box-shadow: 0 2px 8px rgba(95, 43, 9, .3); }
 .piece { line-height: 1; }
 .piece.black-piece { color: #111923; }
 .piece.white-piece { color: #f7f9fc; -webkit-text-stroke: 1px #172033; paint-order: stroke fill; text-shadow: 0 1px 1px rgba(0,0,0,.18); }
@@ -283,6 +286,34 @@ button { color: inherit; }
 .loading { pointer-events: none; }
 .loading .app-shell { opacity: .62; }
 
+.review-dialog { width: min(820px, calc(100% - 32px)); max-height: min(780px, calc(100vh - 32px)); padding: 0; overflow: hidden; border: 0; border-radius: 18px; background: var(--shell); color: var(--text); box-shadow: 0 30px 90px rgba(20, 33, 54, .34); }
+.review-dialog::backdrop { background: rgba(19, 29, 45, .54); backdrop-filter: blur(5px); }
+.review-dialog-shell { max-height: min(780px, calc(100vh - 32px)); display: flex; flex-direction: column; }
+.review-dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 24px 26px 20px; border-bottom: 1px solid var(--line); }
+.review-dialog-head span { color: var(--accent); font-size: .66rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.review-dialog-head h2 { margin: 7px 0 4px; font-size: 1.3rem; letter-spacing: -.03em; }
+.review-dialog-head p { margin: 0; color: var(--muted); font-size: .76rem; }
+.dialog-close { width: 36px; height: 36px; flex: 0 0 36px; border: 0; border-radius: 10px; background: var(--soft); color: var(--muted); font-size: 1.4rem; cursor: pointer; }
+.review-list { min-height: 0; overflow-y: auto; padding: 8px 26px; }
+.review-item { display: grid; grid-template-columns: 116px minmax(0, 1fr); gap: 20px; padding: 18px 0; border-bottom: 1px solid var(--line); }
+.review-item:last-child { border-bottom: 0; }
+.review-crop { position: relative; width: 116px; height: 116px; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: var(--soft); }
+.review-crop canvas { width: 100%; height: 100%; display: block; }
+.review-coordinate { position: absolute; right: 6px; bottom: 6px; padding: 3px 6px; border-radius: 6px; background: rgba(13, 20, 31, .82); color: #fff; font: 700 .65rem "Roboto Mono", Consolas, monospace; }
+.review-item-body { min-width: 0; }
+.review-item-title { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.review-item-title strong { font-size: .9rem; }
+.review-item-title span { color: var(--muted); font-size: .67rem; }
+.review-item-copy { margin: 5px 0 13px; color: var(--muted); font-size: .7rem; line-height: 1.5; }
+.review-piece-grid { display: grid; grid-template-columns: repeat(13, minmax(30px, 1fr)); gap: 5px; }
+.review-piece-choice { min-width: 0; height: 38px; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--raised); font-family: "Segoe UI Symbol", serif; font-size: 1.2rem; cursor: pointer; }
+.review-piece-choice:hover { border-color: var(--accent); }
+.review-piece-choice.selected { border-color: var(--accent); background: rgba(79, 124, 255, .14); box-shadow: inset 0 0 0 1px var(--accent); }
+.review-piece-choice.reviewed { box-shadow: inset 0 0 0 2px #2db36c; }
+.review-dialog-foot { display: flex; align-items: center; gap: 10px; padding: 16px 26px; border-top: 1px solid var(--line); background: var(--shell); }
+.review-dialog-foot > span { margin-right: auto; color: var(--muted); font-size: .7rem; }
+.review-dialog-foot .primary-action { min-width: 170px; }
+
 @media (max-width: 1080px) {
   body { padding: 0; }
   .app-shell { width: 100%; min-height: 100vh; border: 0; border-radius: 0; box-shadow: none; }
@@ -315,6 +346,16 @@ button { color: inherit; }
   .move-list, .threat-list, .result-head { padding-inline: 16px; }
   .result-dock { margin-inline: 16px; }
   .toast { right: 12px; bottom: 12px; left: 12px; max-width: none; }
+  .review-dialog { width: calc(100% - 20px); max-height: calc(100vh - 20px); }
+  .review-dialog-shell { max-height: calc(100vh - 20px); }
+  .review-dialog-head, .review-dialog-foot { padding-inline: 16px; }
+  .review-list { padding-inline: 16px; }
+  .review-item { grid-template-columns: 88px minmax(0, 1fr); gap: 13px; }
+  .review-crop { width: 88px; height: 88px; }
+  .review-piece-grid { grid-template-columns: repeat(7, minmax(30px, 1fr)); }
+  .review-dialog-foot { flex-wrap: wrap; }
+  .review-dialog-foot > span { width: 100%; }
+  .review-dialog-foot .quiet-action, .review-dialog-foot .primary-action { flex: 1; min-width: 0; }
 }
 
 @media (prefers-color-scheme: dark) {

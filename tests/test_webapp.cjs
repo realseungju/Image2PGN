@@ -1,5 +1,5 @@
 const assert=require('assert');
-const {expandPlacement,compressBoard,rotateBoard,analysisSummary,themeLabel,deltaLabel,noticeLabel,statusLabel}=require('../image2pgn/web/app.js');
+const {expandPlacement,compressBoard,rotateBoard,analysisSummary,themeLabel,deltaLabel,noticeLabel,statusLabel,reviewBoardPosition,boardSquareName,reviewCountLabel}=require('../image2pgn/web/app.js');
 const start='rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR';
 assert.strictEqual(compressBoard(expandPlacement(start)),start);
 assert.strictEqual(compressBoard(rotateBoard(expandPlacement('7k/8/8/8/8/8/8/K7'))),'7K/8/8/8/8/8/8/k7');
@@ -10,4 +10,9 @@ assert.strictEqual(noticeLabel('Castling rights are present; verify them if the 
 assert.strictEqual(analysisSummary({evaluation:'+0.32',moves:[{san:'e4',mate:null,score_cp:32}]}),"e4 is Stockfish's top choice. From the side-to-move perspective, this is a balanced position.");
 assert.strictEqual(statusLabel('queued'),'Queued');
 assert.strictEqual(statusLabel('detected'),'Ready');
+assert.deepStrictEqual(reviewBoardPosition({screen_row:1,screen_col:2},'white'),{row:1,col:2});
+assert.deepStrictEqual(reviewBoardPosition({screen_row:1,screen_col:2},'black'),{row:6,col:5});
+assert.strictEqual(boardSquareName(6,5),'f2');
+assert.strictEqual(reviewCountLabel(1),'1 square to review');
+assert.strictEqual(reviewCountLabel(2),'2 squares to review');
 console.log('webapp JS tests passed');

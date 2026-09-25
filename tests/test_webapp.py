@@ -21,6 +21,8 @@ def test_index_serves_english_analysis_workspace(tmp_path):
     assert "Analyze with Stockfish" in response.text
     assert 'id="new-analysis-button"' in response.text
     assert 'id="image-input" type="file" accept="image/png,image/jpeg" multiple' in response.text
+    assert 'id="square-review-dialog"' in response.text
+    assert "Review detected squares" in response.text
 
 
 def test_recognize_rejects_non_image(tmp_path):

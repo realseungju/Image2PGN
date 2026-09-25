@@ -1,89 +1,101 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ChessLens · 스크린샷 체스 분석</title>
+  <title>ChessLens · Screenshot analysis</title>
   <link rel="stylesheet" href="/assets/styles.css">
 </head>
 <body>
-  <header class="hero">
-    <div class="hero__mark" aria-hidden="true">CL</div>
-    <div>
-      <p class="eyebrow">SCREENSHOT → FEN → STOCKFISH</p>
-      <h1>체스 화면을 읽고,<br><span>판단 근거까지 확인하세요.</span></h1>
-      <p class="hero__copy">스크린샷에서 보드와 말을 찾은 뒤 직접 고치고, 확정한 FEN만 Stockfish에 전달합니다.</p>
-    </div>
-    <div class="hero__steps" aria-label="처리 단계">
-      <span class="active">01 첨부</span><span>02 확인</span><span>03 분석</span>
-    </div>
-  </header>
+  <div class="app-shell">
+    <header class="appbar">
+      <a class="brand" href="/" aria-label="ChessLens home"><span class="brand-mark" aria-hidden="true">⌗</span><span>ChessLens</span></a>
+      <nav class="app-nav" aria-label="Primary navigation"><span class="active">New analysis</span></nav>
+      <div class="engine-state"><span class="state-dot" aria-hidden="true"></span><span>Local engine ready</span></div>
+    </header>
 
-  <main>
-    <section class="panel upload-panel" aria-labelledby="upload-title">
-      <div class="section-heading">
-        <div><p class="step">STEP 01</p><h2 id="upload-title">스크린샷 첨부</h2></div>
-        <p>PNG·JPEG · 최대 10MiB</p>
-      </div>
-      <label class="dropzone" id="dropzone">
-        <input id="image-input" type="file" accept="image/png,image/jpeg">
-        <span class="dropzone__icon">＋</span>
-        <strong>이미지를 놓거나 파일을 선택하세요</strong>
-        <small>전체 화면이어도 됩니다. grid-v2가 8×8 보드를 찾습니다.</small>
-      </label>
-      <div class="upload-preview hidden" id="upload-preview">
-        <img id="source-preview" alt="첨부한 체스 스크린샷">
-        <div><strong id="file-name"></strong><span id="file-size"></span></div>
-        <button class="button button--primary" id="recognize-button" type="button">보드 인식하기</button>
-      </div>
-    </section>
-
-    <section class="panel hidden" id="review-section" aria-labelledby="review-title">
-      <div class="section-heading">
-        <div><p class="step">STEP 02</p><h2 id="review-title">인식 결과 확인</h2></div>
-        <div class="badges" id="recognition-badges"></div>
-      </div>
-      <div class="review-layout">
-        <div class="normalized-card">
-          <p class="card-label">모델이 실제로 읽은 보드</p>
-          <img id="normalized-board" alt="정규화된 체스 보드">
-          <p class="muted" id="detection-copy"></p>
+    <div class="workspace">
+      <aside class="source-rail" aria-label="Uploaded images">
+        <label class="rail-add" for="image-input" aria-label="Add screenshot">＋</label>
+        <div class="upload-preview hidden" id="upload-preview">
+          <img id="source-preview" alt="Uploaded chess screenshot">
+          <strong id="file-name"></strong>
+          <span id="file-size"></span>
         </div>
-        <div>
-          <div class="board-toolbar">
-            <div><p class="card-label">수정 가능한 64칸</p><p class="muted">말을 고른 뒤 칸을 누르세요.</p></div>
-            <button class="button button--ghost" id="flip-button" type="button">보드 180° 뒤집기</button>
+        <div class="normalized-preview hidden" id="normalized-preview">
+          <img id="normalized-board" alt="Normalized detected board">
+          <span>Board</span>
+        </div>
+      </aside>
+
+      <main class="board-stage">
+        <section class="upload-stage" id="upload-stage" aria-labelledby="upload-title">
+          <label class="dropzone" id="dropzone">
+            <input id="image-input" type="file" accept="image/png,image/jpeg">
+            <span class="dropzone-icon" aria-hidden="true">＋</span>
+            <h1 id="upload-title">Drop a chess screenshot</h1>
+            <p>PNG or JPEG · up to 10 MiB</p>
+            <small>A full-screen capture is fine. grid-v2 will locate the 8×8 board.</small>
+          </label>
+          <button class="primary-action hidden" id="recognize-button" type="button">Detect board <span>→</span></button>
+        </section>
+
+        <section class="review-section hidden" id="review-section" aria-labelledby="review-title">
+          <div class="stage-toolbar">
+            <div><h1 id="review-title">Detected board</h1><p>Choose a piece, then click a square to edit it.</p></div>
+            <div class="recognition-badges" id="recognition-badges"></div>
+            <button class="quiet-action" id="flip-button" type="button">Flip board</button>
           </div>
-          <div class="chessboard" id="chessboard" aria-label="수정 가능한 체스판"></div>
-          <div class="piece-palette" id="piece-palette" aria-label="기물 선택"></div>
-        </div>
-      </div>
-      <div class="warning-box hidden" id="recognition-warning"></div>
-      <label class="field field--wide"><span>기물 배치 FEN</span><input id="placement" spellcheck="false"></label>
 
-      <div class="history-card">
-        <div class="history-card__title"><div><p class="card-label">이미지에 없는 게임 정보</p><h3>분석 전에 직접 확인해야 합니다</h3></div><span class="assumption">사용자 입력</span></div>
-        <div class="form-grid">
-          <label class="field"><span>둘 차례</span><select id="side"><option value="w">백</option><option value="b">흑</option></select></label>
-          <label class="field"><span>캐슬링</span><input id="castling" value="-" spellcheck="false"></label>
-          <label class="field"><span>앙파상</span><input id="en-passant" value="-" spellcheck="false"></label>
-          <label class="field"><span>반수</span><input id="halfmove" type="number" min="0" value="0"></label>
-          <label class="field"><span>수 번호</span><input id="fullmove" type="number" min="1" value="1"></label>
-        </div>
-        <label class="confirm"><input id="confirm-history" type="checkbox"><span>이 값은 이미지가 알아낸 사실이 아니라 제가 확인하거나 가정한 값입니다.</span></label>
-      </div>
-      <div class="fen-output"><span>분석할 전체 FEN</span><code id="full-fen"></code></div>
-      <button class="button button--analyze" id="analyze-button" type="button" disabled>Stockfish 분석 시작 <span>→</span></button>
-    </section>
+          <div class="board-wrap">
+            <div class="chessboard" id="chessboard" aria-label="Editable chessboard"></div>
+            <div class="piece-palette" id="piece-palette" aria-label="Piece palette"></div>
+          </div>
 
-    <section class="panel hidden" id="result-section" aria-labelledby="result-title">
-      <div class="section-heading"><div><p class="step">STEP 03</p><h2 id="result-title">Stockfish 분석</h2></div><span class="analysis-status">확정한 FEN 기준</span></div>
-      <div class="result-hero"><div><span>현재 평가</span><strong id="evaluation">—</strong></div><p id="summary"></p></div>
-      <div class="result-grid"><div><h3>추천 수</h3><div id="candidate-moves"></div></div><div><h3>위협과 주의사항</h3><div id="threats"></div></div></div>
-    </section>
+          <div class="warning-box hidden" id="recognition-warning" role="alert"></div>
+          <div class="board-meta">
+            <span id="detection-copy"></span>
+            <label class="placement-field"><span>Piece placement</span><input id="placement" spellcheck="false"></label>
+          </div>
+        </section>
+      </main>
 
-    <div class="toast hidden" id="toast" role="status"></div>
-  </main>
+      <aside class="analysis-rail" aria-label="Position analysis">
+        <section class="analysis-empty" id="analysis-empty">
+          <span class="empty-mark" aria-hidden="true">⌁</span>
+          <h2>Waiting for a position</h2>
+          <p>Upload a screenshot and confirm the detected board before running Stockfish.</p>
+        </section>
+
+        <section class="analysis-setup hidden" id="analysis-setup" aria-labelledby="setup-title">
+          <div class="rail-heading"><span>Position setup</span><h2 id="setup-title">Confirm game state</h2><p>A screenshot cannot reveal these values reliably.</p></div>
+          <div class="form-grid">
+            <label class="field"><span>Side to move</span><select id="side"><option value="w">White</option><option value="b">Black</option></select></label>
+            <label class="field"><span>Castling</span><input id="castling" value="-" spellcheck="false"></label>
+            <label class="field"><span>En passant</span><input id="en-passant" value="-" spellcheck="false"></label>
+            <label class="field"><span>Halfmove</span><input id="halfmove" type="number" min="0" value="0"></label>
+            <label class="field"><span>Move number</span><input id="fullmove" type="number" min="1" value="1"></label>
+          </div>
+          <label class="confirm"><input id="confirm-history" type="checkbox"><span>I reviewed or intentionally assumed the game-state values above.</span></label>
+          <div class="fen-dock"><span>FEN to analyze</span><code id="full-fen"></code></div>
+          <button class="primary-action" id="analyze-button" type="button" disabled>Analyze with Stockfish <span>→</span></button>
+        </section>
+
+        <section class="analysis-result hidden" id="result-section" aria-labelledby="result-title">
+          <div class="result-head">
+            <span id="result-title">Stockfish · depth 14</span>
+            <div class="evaluation"><strong id="evaluation">—</strong><small>side-to-move perspective</small></div>
+            <div class="eval-track" aria-hidden="true"><span></span></div>
+            <p id="summary"></p>
+          </div>
+          <div class="move-list"><h2>Top moves</h2><div id="candidate-moves"></div></div>
+          <div class="threat-list"><h2>Threats and notes</h2><div id="threats"></div></div>
+          <div class="result-dock"><span>Confirmed FEN</span><code id="result-fen"></code><button class="quiet-action" id="edit-position-button" type="button">Edit position setup</button></div>
+        </section>
+      </aside>
+    </div>
+  </div>
+  <div class="toast hidden" id="toast" role="status"></div>
   <script src="/assets/app.js"></script>
 </body>
 </html>

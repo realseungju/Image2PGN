@@ -14,11 +14,11 @@ def configured_app(tmp_path: Path):
     return webapp.create_app(model_path=model, engine_path=tmp_path / "stockfish")
 
 
-def test_index_serves_korean_upload_flow(tmp_path):
+def test_index_serves_english_analysis_workspace(tmp_path):
     response = TestClient(configured_app(tmp_path)).get("/")
     assert response.status_code == 200
-    assert "스크린샷 첨부" in response.text
-    assert "Stockfish 분석 시작" in response.text
+    assert "Drop a chess screenshot" in response.text
+    assert "Analyze with Stockfish" in response.text
 
 
 def test_recognize_rejects_non_image(tmp_path):
@@ -69,7 +69,7 @@ def test_analyze_requires_game_history_confirmation(tmp_path):
         "/api/analyze", json={"fen": "8/8/8/8/8/8/8/4K2k w - - 0 1"}
     )
     assert response.status_code == 400
-    assert "확인" in response.json()["detail"]
+    assert "Confirm" in response.json()["detail"]
 
 
 def test_analyze_returns_structured_result(tmp_path, monkeypatch):

@@ -54,17 +54,17 @@ def create_app(model_path: Path | None = None, engine_path: Path | None = None, 
     async def recognize(image: UploadFile = File(...)):
         config: WebConfig = app.state.config
         if config.model_path is None:
-            raise HTTPException(503, "PieceCNN 모델 경로가 설정되지 않았습니다.")
+            raise HTTPException(503, "The PieceCNN model path is not configured.")
         if not config.model_path.is_file():
-            raise HTTPException(503, "설정된 PieceCNN 모델 파일을 찾을 수 없습니다.")
+            raise HTTPException(503, "The configured PieceCNN model file does not exist.")
         suffix = ALLOWED_CONTENT_TYPES.get((image.content_type or "").lower())
         if suffix is None:
-            raise HTTPException(415, "PNG 또는 JPEG 이미지만 첨부할 수 있습니다.")
+            raise HTTPException(415, "Only PNG and JPEG images are supported.")
         payload = await image.read(MAX_UPLOAD_BYTES + 1)
         if not payload:
-            raise HTTPException(400, "빈 이미지 파일입니다.")
+            raise HTTPException(400, "The uploaded image is empty.")
         if len(payload) > MAX_UPLOAD_BYTES:
-            raise HTTPException(413, "이미지는 10MiB 이하여야 합니다.")
+            raise HTTPException(413, "Images must be 10 MiB or smaller.")
 
         temporary_path: Path | None = None
         try:
@@ -96,7 +96,7 @@ def create_app(model_path: Path | None = None, engine_path: Path | None = None, 
         except HTTPException:
             raise
         except (FileNotFoundError, ValueError, RuntimeError) as exc:
-            raise HTTPException(422, f"이미지를 인식하지 못했습니다: {exc}") from exc
+            raise HTTPException(422, f"The board could not be recognized: {exc}") from exc
         finally:
             if temporary_path is not None:
                 temporary_path.unlink(missing_ok=True)
@@ -104,7 +104,7 @@ def create_app(model_path: Path | None = None, engine_path: Path | None = None, 
     @app.post("/api/analyze")
     async def analyze(request: AnalyzeRequest):
         if not request.confirmed_history:
-            raise HTTPException(400, "차례와 게임 이력 정보를 확인해야 분석할 수 있습니다.")
+            raise HTTPException(400, "Confirm the side to move and game-state fields before analysis.")
         config: WebConfig = app.state.config
         try:
             result = await run_in_threadpool(
@@ -117,11 +117,11 @@ def create_app(model_path: Path | None = None, engine_path: Path | None = None, 
             )
             return asdict(result)
         except ValueError as exc:
-            raise HTTPException(400, f"FEN을 확인해 주세요: {exc}") from exc
+            raise HTTPException(400, f"Check the FEN: {exc}") from exc
         except FileNotFoundError as exc:
             raise HTTPException(503, str(exc)) from exc
         except RuntimeError as exc:
-            raise HTTPException(502, f"Stockfish 분석에 실패했습니다: {exc}") from exc
+            raise HTTPException(502, f"Stockfish analysis failed: {exc}") from exc
 
     return app
 

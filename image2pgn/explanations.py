@@ -15,7 +15,7 @@ class AnalysisCancelled(Exception):
 def checked_board(fen):
     board = chess.Board(fen)
     if not board.is_valid():
-        raise ValueError("합법적인 국면이 아닙니다. 왕·차례·체크·특수 권리를 확인하세요.")
+        raise ValueError("합법적인 국면이 아닙니다. 킹·차례·체크·특수 권리를 확인하세요.")
     return board
 
 
@@ -39,7 +39,7 @@ def prepare_position(fen, before_fen="", target_uci=""):
 
 
 def move_words(board, move):
-    names = {1: '폰', 2: '나이트', 3: '비숍', 4: '룩', 5: '퀸', 6: '왕'}
+    names = {1: '폰', 2: '나이트', 3: '비숍', 4: '룩', 5: '퀸', 6: '킹'}
     side = '백' if board.turn else '흑'
     mover = names[board.piece_at(move.from_square).piece_type]
     origin, dest = chess.square_name(move.from_square), chess.square_name(move.to_square)
@@ -111,7 +111,7 @@ def capture_options(fen, before_fen="", target_uci="", capture_uci="", focus_squ
     board = root.copy()
     if target:
         board.push(target)
-    names = {1: '폰', 2: '나이트', 3: '비숍', 4: '룩', 5: '퀸', 6: '왕'}
+    names = {1: '폰', 2: '나이트', 3: '비숍', 4: '룩', 5: '퀸', 6: '킹'}
     def victim_square(move):
         return move.to_square + (-8 if board.turn else 8) if board.is_en_passant(move) else move.to_square
     targets = [dict(square=chess.square_name(s), piece=p.symbol(),
@@ -214,7 +214,7 @@ def explain(fen, engine_path: Path | None, before_fen="", target_uci="", cancell
                 forced = capture_board.legal_moves.count() == 1
                 square = move.to_square + (-8 if capture_board.turn else 8) if capture_board.is_en_passant(move) else move.to_square
                 victim = capture_board.piece_at(square)
-                names = {1:'폰', 2:'나이트', 3:'비숍', 4:'룩', 5:'퀸', 6:'왕'}
+                names = {1:'폰', 2:'나이트', 3:'비숍', 4:'룩', 5:'퀸', 6:'킹'}
                 name = names[victim.piece_type]
                 who = '백' if capture_board.turn else '흑'
                 label = f"{who}이 {name}{'를' if name == '나이트' else '을'} 잡으면"

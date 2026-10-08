@@ -3,7 +3,7 @@
 const $ = id => document.getElementById(id);
 let token='', job=null, poll=null, branchIndex=0, stepIndex=0, flipped=false, playing=false, animating=false, generation=0, renderedRevision=-1;
 const params=new URLSearchParams(location.search);
-let reviewFocus='',reviewTurn='',capturePreviewGeneration=0,capturePreviewPending=false,capturePreviewValid=false;
+let reviewFocus='*',reviewTurn='',capturePreviewGeneration=0,capturePreviewPending=false,capturePreviewValid=false;
 function placement(fen){
   const cells=[]; const rows=fen.trim().split(/\s+/)[0].split('/');
   if(rows.length!==8) throw Error('FEN은 8개 행이어야 합니다.');
@@ -45,7 +45,8 @@ function syncTurnButtons(){
   updateReviewGate();
 }
 function chooseTurn(value){
-  reviewFocus='';$('focus').value='';$('capture').value='';
+  if(reviewTurn&&reviewTurn!==value)reviewFocus='*';
+  reviewFocus=reviewFocus||'*';$('focus').value=reviewFocus;$('capture').value='';
   reviewTurn=value;
   const fields=$('fen').value.trim().split(/\s+/);fields[1]=value;$('fen').value=fields.join(' ');
   resetConfirmation();syncTurnButtons();refreshCaptures();
@@ -62,10 +63,9 @@ async function refreshCaptures(){
     const data=await api('/api/explanations/capture-options',{fen:$('fen').value.trim(),before_fen:$('before-fen').value.trim(),target_uci:$('target').value.trim(),focus_square:reviewFocus==='*'?'':reviewFocus});
     if(stamp!==capturePreviewGeneration||job?.job_id!==id||job?.status!=='needs_input')return;
     const focusSelect=$('focus');focusSelect.replaceChildren();
-    const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='기물을 선택하세요';focusSelect.append(placeholder);
+    const general=document.createElement('option');general.value='*';general.textContent='판 전체 분석';focusSelect.append(general);
     data.targets.forEach(t=>{const option=document.createElement('option');option.value=t.square;option.textContent=t.label_ko;focusSelect.append(option);});
-    const general=document.createElement('option');general.value='*';general.textContent='대상 없이 판 전체 분석';focusSelect.append(general);
-    if(reviewFocus!=='*'&&!data.targets.some(t=>t.square===reviewFocus))reviewFocus='';
+    if(reviewFocus!=='*'&&!data.targets.some(t=>t.square===reviewFocus))reviewFocus='*';
     focusSelect.value=reviewFocus;
     $('focus-note').textContent=data.focus?'설명 대상: '+data.focus.label_ko+'. 이 말이 잡힌 뒤를 비교합니다.':reviewFocus==='*'?'판 전체의 최선 수를 분석합니다.':'목록에서 고르거나 체스판의 상대 기물을 누르세요.';
     if(!reviewFocus){$('capture-options-note').textContent='먼저 설명할 기물을 선택해주세요.';renderBoard($('fen').value,true);return;}
@@ -87,7 +87,8 @@ function showReview(){
   $('overlay-check').hidden=!hasOverlays();
   if(hasOverlays())$('recognition-note').textContent='화살표나 색 표시가 말 인식에 영향을 줄 수 있습니다. 노란 칸을 원본과 비교해주세요. '+$('recognition-note').textContent;
   $('fen').value=job.proposed_fen||(r?r.placement+' ? - - 0 1':'8/8/8/8/8/8/8/8 ? - - 0 1');
-  reviewFocus=job.focus_square||'';
+  reviewFocus=job.focus_square||'*';
+  $('focus').replaceChildren();const defaultFocus=document.createElement('option');defaultFocus.value='*';defaultFocus.textContent='판 전체 분석';$('focus').append(defaultFocus);
   const side=$('fen').value.trim().split(/\s+/)[1];reviewTurn=['w','b'].includes(side)?side:'';
   $('before-fen').value=job.before_fen||'';$('target').value=job.target_uci||'';
   resetConfirmation();syncTurnButtons();renderBoard($('fen').value,true);refreshCaptures();

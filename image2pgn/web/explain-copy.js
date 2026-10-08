@@ -10,7 +10,7 @@
       label=branch.score_cp===0?'양쪽이 균형':(branch.score_cp>0?own:other)+'이 유리 · '+(Math.abs(branch.score_cp)/100).toFixed(2);
     }else{label='평가 정보 없음';}
     const first=branch.steps?.[0];
-    const piece={P:'폰',N:'나이트',B:'비숍',R:'룩',Q:'퀸',K:'왕'}[(first?.san||'').replace(/^[a-h]/,'P')[0]];
+    const piece={P:'폰',N:'나이트',B:'비숍',R:'룩',Q:'퀸',K:'킹'}[(first?.san||'').replace(/^[a-h]/,'P')[0]];
     const stage=branch.kind==='capture'&&branch.comparison_stage!=='current'&&first
       ? (piece?piece+(piece==='나이트'?'를 ':'을 '): '')+first.to_square+'로 옮긴 뒤의 평가'
       : '분석을 시작한 판의 평가';

@@ -51,6 +51,7 @@ def test_recognize_returns_board_and_deletes_temporary_file(tmp_path, monkeypatc
     def fake_recognize(**kwargs):
         captured["path"] = kwargs["image_path"]
         assert captured["path"].exists()
+        assert kwargs["infer_color_from_image"] is True
         return SimpleNamespace(
             placement="8/8/8/8/8/8/8/4K2k", orientation="white",
             orientation_status="estimated", orientation_source="position",

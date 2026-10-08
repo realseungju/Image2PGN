@@ -64,7 +64,7 @@ def test_high_confidence_arrow_prediction_is_removed_but_still_reviewed(monkeypa
     monkeypatch.setattr(cnn, 'PieceCnn', lambda **k: ConfidentModel())
     monkeypatch.setattr(cnn, 'load_image', lambda *a: board)
     monkeypatch.setattr(cnn, 'warp_board_result', lambda *a, **k: BoardDetectionResult(board, dict(requires_review=False)))
-    result = cnn.recognize_fen_cnn_result(tmp_path/'x.png', tmp_path/'model.pt', device='cpu', threshold=.5, low_confidence_policy='review', retain_board_image=True)
+    result = cnn.recognize_fen_cnn_result(tmp_path/'x.png', tmp_path/'model.pt', device='cpu', threshold=.5, low_confidence_policy='review', infer_color_from_image=True, retain_board_image=True)
     cells = expand_placement(result.placement)
     assert cells[3][2] == '.' and cells[3][4] == 'R'
     hint = next(h for h in result.review_squares if (h['screen_row'], h['screen_col']) == (3, 2))

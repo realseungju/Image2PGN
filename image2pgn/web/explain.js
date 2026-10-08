@@ -84,6 +84,7 @@ function showReview(){
   const r=job.recognition;$('review').hidden=false;$('board-section').hidden=false;$('result').hidden=true;
   $('crop').hidden=!r?.board_image;if(r?.board_image)$('crop').src=r.board_image;
   $('recognition-note').textContent=r?'원본 화면은 '+(r.orientation==='black'?'흑':'백')+'이 아래에 있는 것으로 보입니다. '+(r.review_squares.length?'노란 칸 '+r.review_squares.length+'곳의 말을 확인하세요. ':'')+(r.board_details?.requires_review?'판의 테두리도 확인하세요. ':'')+'인식 오류는 판 인식 수정에서 고칠 수 있습니다.':job.recognition_error||'말의 위치와 차례를 확인하세요.';
+  if((r?.review_squares||[]).some(s=>s.color_corrected))$('recognition-note').textContent='말의 몸통과 배경을 비교해 흑/백을 보정했습니다. 노란 칸을 원본과 비교해주세요. '+$('recognition-note').textContent;
   $('overlay-check').hidden=!hasOverlays();
   if(hasOverlays())$('recognition-note').textContent='화살표나 색 표시가 말 인식에 영향을 줄 수 있습니다. 노란 칸을 원본과 비교해주세요. '+$('recognition-note').textContent;
   $('fen').value=job.proposed_fen||(r?r.placement+' ? - - 0 1':'8/8/8/8/8/8/8/8 ? - - 0 1');

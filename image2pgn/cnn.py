@@ -231,15 +231,20 @@ def recognize_fen_cnn_result(
                     if class_name != "empty" and coverage < 0.5 and clean_empty >= 0.995 and overlay_empty[row_index][col_index]:
                         class_name = "empty"
                         hint["auto_corrected"] = True
+                if empty_background[row_index][col_index]:
+                    class_name = "empty"
+                if infer_color_from_image and class_name != "empty" and not coverage:
+                    color_evidence = piece_color_evidence(square)
+                    color = color_evidence["color"]
+                    if color and color != class_name.split("_", 1)[0]:
+                        class_name = f"{color}_{class_name.split('_', 1)[1]}"
+                        hint = hint or {"reason": "color_contrast"}
+                        hint.update(color_corrected=True, color_evidence=color_evidence)
                 if hint is not None:
                     review_squares.append({"screen_row": row_index, "screen_col": col_index,
                                            "class_name": class_names[index],
                                            "score": float(score.item()), "empty_score": empty_score,
                                            "proposed_class_name": class_name, **hint})
-                if empty_background[row_index][col_index]:
-                    class_name = "empty"
-                if infer_color_from_image and class_name != "empty":
-                    class_name = class_name_with_inferred_color(square, class_name)
                 fen_row.append(piece_for_class_name(class_name))
             board.append(fen_row)
 
@@ -445,30 +450,54 @@ def class_name_with_inferred_color(square: np.ndarray, class_name: str) -> str:
         return class_name
     piece_type = class_name.split("_", 1)[1]
     color = infer_piece_color_from_square(square)
-    return f"{color}_{piece_type}"
+    return f"{color}_{piece_type}" if color else class_name
 
 
-def infer_piece_color_from_square(square: np.ndarray) -> str:
-    gray = cv2.cvtColor(square, cv2.COLOR_BGR2GRAY)
-    threshold_value = _otsu_threshold(gray)
-    dark_pixels = gray[gray <= threshold_value]
-    light_pixels = gray[gray > threshold_value]
-    if len(dark_pixels) == 0 or len(light_pixels) == 0:
-        return "white" if float(gray.mean()) >= 128.0 else "black"
+def piece_color_evidence(square: np.ndarray) -> dict:
+    """Compare a piece's interior with its own square, abstaining on weak cues.
 
-    dark_mean = float(dark_pixels.mean())
-    light_mean = float(light_pixels.mean())
-    global_mean = float(gray.mean())
+    Relative contrast alone reverses black pieces on very dark tiles. Interior
+    luminance and low saturation must support the same interpretation. Thin
+    dark outlines, coordinate labels and corner badges are not the piece body.
+    """
+    tile = cv2.resize(square, (80, 80), interpolation=cv2.INTER_AREA)
+    lab = cv2.cvtColor(tile, cv2.COLOR_BGR2LAB).astype(np.float32)
+    corners = np.concatenate([lab[y:y + 8, x:x + 8].reshape(-1, 3)
+                              for y in (4, 68) for x in (4, 68)])
+    background = np.median(corners, axis=0)
+    tolerance = np.maximum(np.median(np.abs(corners - background), axis=0) * 4, [16, 10, 10])
+    foreground = (np.max(np.abs(lab - background) / tolerance, axis=2) > 1).astype(np.uint8)
+    foreground[:9] = foreground[71:] = 0
+    foreground[:, :9] = foreground[:, 71:] = 0
+    count, labels, stats, centers = cv2.connectedComponentsWithStats(foreground, 8)
+    candidates = [i for i in range(1, count) if stats[i, cv2.CC_STAT_AREA] >= 100
+                  and 22 <= centers[i][0] <= 58 and 18 <= centers[i][1] <= 62]
+    if not candidates:
+        return {"color": None, "reason": "no_central_body"}
+    selected = max(candidates, key=lambda i: stats[i, cv2.CC_STAT_AREA])
+    region = (labels == selected).astype(np.uint8)
+    interior = cv2.erode(region, np.ones((5, 5), np.uint8)) > 0
+    if interior.sum() < 50 or region.mean() > 0.55:
+        return {"color": None, "reason": "ambiguous_body_area"}
+    gray = cv2.cvtColor(tile, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    body_brightness = float(np.median(gray[interior]))
+    background_brightness = float(np.median(np.concatenate(
+        [gray[y:y + 8, x:x + 8].reshape(-1) for y in (4, 68) for x in (4, 68)])))
+    contrast = body_brightness - background_brightness
+    saturation = float(np.median(cv2.cvtColor(tile, cv2.COLOR_BGR2HSV)[:, :, 1][interior]))
+    color = None
+    if saturation <= 60:
+        if body_brightness <= 120 and contrast <= -18:
+            color = "black"
+        elif body_brightness >= 180 and contrast >= 18:
+            color = "white"
+    return {"color": color, "reason": "body_background_contrast" if color else "ambiguous_contrast",
+            "body_brightness": body_brightness, "background_brightness": background_brightness,
+            "contrast": contrast, "body_saturation": saturation, "body_pixels": int(interior.sum())}
 
-    # Piece pixels are usually the smaller foreground cluster. If the foreground
-    # is ambiguous, use the whole square brightness as a stable fallback.
-    dark_ratio = len(dark_pixels) / gray.size
-    light_ratio = len(light_pixels) / gray.size
-    foreground_mean = dark_mean if dark_ratio < light_ratio else light_mean
-    if abs(foreground_mean - global_mean) < 18:
-        foreground_mean = global_mean
 
-    return "white" if foreground_mean >= 128.0 else "black"
+def infer_piece_color_from_square(square: np.ndarray) -> str | None:
+    return piece_color_evidence(square)["color"]
 
 
 def _otsu_threshold(gray: np.ndarray) -> float:

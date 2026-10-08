@@ -80,6 +80,7 @@ def create_app(model_path: Path | None = None, engine_path: Path | None = None, 
                 threshold=0.5,
                 board_detector="grid-v2",
                 suppress_empty_background=False,
+                infer_color_from_image=True,
                 low_confidence_policy="review",
                 retain_board_image=True,
             )
@@ -138,7 +139,7 @@ def create_app(model_path: Path | None = None, engine_path: Path | None = None, 
             result = recognize_fen_cnn_result(
                 image_path=path, model_path=config.model_path, orientation="auto", device=config.device,
                 threshold=0.5, board_detector="grid-v2", suppress_empty_background=False,
-                low_confidence_policy="review", retain_board_image=True)
+                low_confidence_policy="review", infer_color_from_image=True, retain_board_image=True)
             return dict(placement=result.placement, orientation=result.orientation,
                         orientation_status=result.orientation_status, orientation_details=result.orientation_details,
                         review_squares=list(result.review_squares), board_details=result.board_details,

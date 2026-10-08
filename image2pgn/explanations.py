@@ -88,13 +88,27 @@ def replay_steps(root, moves, viewpoint, branch_id):
     return steps
 
 
-def capture_options(fen, before_fen="", target_uci="", capture_uci=""):
+def capture_options(fen, before_fen="", target_uci="", capture_uci="", focus_square=""):
     """Only legal captures; this does not infer a previous move or call an engine."""
     root, target = prepare_position(fen, before_fen, target_uci)
     board = root.copy()
     if target:
         board.push(target)
+    names = {1: '폰', 2: '나이트', 3: '비숍', 4: '룩', 5: '퀸', 6: '왕'}
+    def victim_square(move):
+        return move.to_square + (-8 if board.turn else 8) if board.is_en_passant(move) else move.to_square
+    targets = [dict(square=chess.square_name(s), piece=p.symbol(),
+                    label_ko=f"{'백' if p.color else '흑'} {names[p.piece_type]}({chess.square_name(s)})")
+               for s, p in sorted(board.piece_map().items()) if p.color != board.turn and p.piece_type != chess.KING]
+    focus = None
     moves = list(board.generate_legal_captures())
+    if focus_square:
+        square = chess.parse_square(focus_square)
+        piece = board.piece_at(square)
+        if not piece or piece.color == board.turn or piece.piece_type == chess.KING:
+            raise ValueError('잡히는 대상은 상대 기물이어야 합니다. 대상 칸과 차례를 확인하세요.')
+        focus = next(t for t in targets if t['square'] == focus_square)
+        moves = [m for m in moves if victim_square(m) == square]
     if capture_uci:
         chosen = chess.Move.from_uci(capture_uci)
         if chosen not in moves:
@@ -108,12 +122,14 @@ def capture_options(fen, before_fen="", target_uci="", capture_uci=""):
         choices.append(dict(uci=move.uci(), san=board.san(move), from_square=chess.square_name(move.from_square),
                             to_square=chess.square_name(move.to_square), captured_piece=victim.symbol(),
                             label_ko=f"{names[mover.piece_type]} → {names[victim.piece_type]} 잡기 ({board.san(move)})"))
-    return dict(turn='white' if board.turn else 'black', stage='after_target' if target else 'current', captures=choices)
+    return dict(turn='white' if board.turn else 'black', stage='after_target' if target else 'current', captures=choices,
+                targets=targets, focus=focus,
+                reason_ko=f"{focus['label_ko']}을 잡는 합법적인 수가 없습니다." if focus and not moves else '')
 
 
-def explain(fen, engine_path: Path | None, before_fen="", target_uci="", cancelled=None, movetime_ms=700, capture_uci=""):
+def explain(fen, engine_path: Path | None, before_fen="", target_uci="", cancelled=None, movetime_ms=700, capture_uci="", focus_square=""):
     root, target = prepare_position(fen, before_fen, target_uci)
-    capture_options(fen, before_fen, target_uci, capture_uci)
+    options = capture_options(fen, before_fen, target_uci, capture_uci, focus_square)
     viewpoint = root.turn
     def checkpoint():
         if cancelled and cancelled.is_set():
@@ -162,9 +178,12 @@ def explain(fen, engine_path: Path | None, before_fen="", target_uci="", cancell
                 comparison['reason_ko'] = '선택한 수를 둔 뒤 그 말을 잡는 합법적인 대응이 없습니다.'
             else:
                 captures = list(capture_board.generate_legal_captures())
+            if focus_square:
+                captures = [chess.Move.from_uci(c['uci']) for c in options['captures']]
+                comparison['reason_ko'] = options['reason_ko']
             if capture_uci:
                 captures = [chess.Move.from_uci(capture_uci)]
-            elif not target and not captures and best.get('pv'):
+            elif not focus_square and not target and not captures and best.get('pv'):
                 # Explicit future variation, never a reconstruction of the screenshot's last move.
                 recommended = best['pv'][0]
                 capture_board.push(recommended)
@@ -210,6 +229,35 @@ def explain(fen, engine_path: Path | None, before_fen="", target_uci="", cancell
         winner = ('백' if viewpoint else '흑') if capture_mate > 0 else ('흑' if viewpoint else '백')
         ko += f" 선택한 잡기 수순에서는 {winner}이 {abs(capture_mate)}수 안에 체크메이트할 수 있습니다."
         en = f"In the capture variation, {'White' if winner == '백' else 'Black'} can force checkmate in {abs(capture_mate)} moves. The board compares it with the best defence, sir."
+    if options['focus']:
+        focus = options['focus']
+        if not capture_branch:
+            ko = comparison['reason_ko'] + ' 다른 기물을 잡는 수로 바꾸지 않았습니다.'
+            en = 'There is no legal capture of the selected piece in this position, sir.'
+        else:
+            first = capture_branch['steps'][0 if not target else 1]
+            replies = capture_branch['steps'][(1 if not target else 2):]
+            response = replies[0]['san'] if replies else ''
+            ko = f"{focus['label_ko']}을 잡는 {first['san']} 이후를 분석했습니다."
+            if response:
+                ko += f" 상대의 핵심 응수는 {response}입니다."
+            losing_mate = capture_branch['mate'] not in (None, 0) and (
+                (capture_branch['mate'] > 0) != (capture_board.turn == viewpoint))
+            first_reply_mate = replies and any(f['kind'] == 'checkmate' for f in replies[0]['facts'])
+            if losing_mate:
+                winner = 'White' if not capture_board.turn else 'Black'
+                ko += ' 기물을 얻어도 체크메이트를 막지 못합니다.'
+                ko += (' 다음 한 수에 체크메이트됩니다.' if first_reply_mate else
+                       f" 엔진 수순에서는 {abs(capture_branch['mate'])}수 안에 체크메이트됩니다.")
+                en = (f"Capturing the {'queen' if focus['piece'].lower() == 'q' else 'selected piece'} allows "
+                      f"{winner} to force checkmate. Follow the reply on the board, sir.")
+                if branches[0]['mate'] not in (None, 0) and ((branches[0]['mate'] > 0) != (capture_board.turn == viewpoint)):
+                    ko += ' 이 판에서는 최선으로 대응해도 메이트를 피할 수 없습니다.'
+            else:
+                ko += ' 이 분석만으로 이 기물을 잡으면 안 된다고 단정할 수는 없습니다.'
+                en = 'The selected capture is analysed. This line does not establish that capturing is a mistake, sir.'
+            comparison['response_san'] = response
+    comparison['focus'] = options['focus']
     return dict(schema_version=1, fen=fen, root_fen=root.fen(), provenance="user_confirmed_game_state",
                 assumptions=["차례와 캐슬링·앙파상 가능 여부는 직접 확인한 정보를 기준으로 합니다."],
                 engine=dict(name=engine_name, threads=1, hash_mib=64, per_branch_ms=movetime_ms,

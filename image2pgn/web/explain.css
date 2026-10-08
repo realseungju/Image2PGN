@@ -5,3 +5,5 @@
 .result-head{flex-wrap:wrap}.result-head select{flex:1;min-width:200px}.badge{font-size:12px;white-space:normal}#score-context{margin:6px 0 0}#material:empty{display:none}
 
 .turn-choice{border:0;padding:0;margin:16px 0}.turn-choice legend{font-size:13px;color:#c2d8e0;margin-bottom:8px}.turn-choice button{min-width:110px;margin-right:7px}.turn-choice button[aria-pressed=true]{border-color:#6ce6d1;background:#65d9ca22;color:#8debdc}.turn-choice .hint{margin-bottom:0}#show-capture{width:100%;border-color:#65d9ca55}#turn-result{margin:4px 0}
+
+.square.focus-piece{box-shadow:inset 0 0 0 4px #f7d178;}

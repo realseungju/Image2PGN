@@ -19,7 +19,7 @@ from fastapi import File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
-from .explanations import AnalysisCancelled, capture_options, explain, prepare_position
+from .explanations import AnalysisCancelled, capture_options, explain
 
 
 class Answers(BaseModel):
@@ -30,9 +30,11 @@ class Answers(BaseModel):
     before_fen: str = Field(default="", max_length=120)
     target_uci: str = Field(default="", max_length=5)
     capture_uci: str = Field(default="", max_length=5)
+    focus_square: str = Field(default="", max_length=2)
 
 
 class CapturePreview(BaseModel):
+    focus_square: str = Field(default="", max_length=2)
     fen: str = Field(min_length=5, max_length=120)
     before_fen: str = Field(default="", max_length=120)
     target_uci: str = Field(default="", max_length=5)
@@ -67,8 +69,8 @@ class JobStore:
             job['_updated'] = time.monotonic()
             return True
 
-    def create(self, request_id, question, payload, fen, confirmed, before_fen, target_uci, show_popup, source_bounds, capture_uci=""):
-        identity = hashlib.sha256(payload + json.dumps([question, fen, confirmed, before_fen, target_uci, show_popup, source_bounds, capture_uci], sort_keys=True).encode()).hexdigest()
+    def create(self, request_id, question, payload, fen, confirmed, before_fen, target_uci, show_popup, source_bounds, capture_uci="", focus_square=""):
+        identity = hashlib.sha256(payload + json.dumps([question, fen, confirmed, before_fen, target_uci, show_popup, source_bounds, capture_uci, focus_square], sort_keys=True).encode()).hexdigest()
         with self.lock:
             # Only expired sessions are removed; never evict active review sessions.
             for key, old in list(self.jobs.items()):
@@ -87,11 +89,11 @@ class JobStore:
             job = dict(schema_version=1, request_id=request_id, job_id=job_id, revision=1,
                        status='queued', progress_stage='접수', needs_review=False, clarifications=[], result=None,
                        recognition=None, proposed_fen=fen, question=question, popup_error='', source_bounds=source_bounds,
-                       before_fen=before_fen, target_uci=target_uci, capture_uci=capture_uci,
+                       before_fen=before_fen, target_uci=target_uci, capture_uci=capture_uci, focus_square=focus_square,
                        gui_url=f'/explain?job={job_id}', _cancel=threading.Event(), _updated=time.monotonic())
             self.jobs[job_id] = job
             self.requests[request_id] = (job_id, identity)
-            self.pool.submit(self.process, job, payload, fen, confirmed, before_fen, target_uci, capture_uci)
+            self.pool.submit(self.process, job, payload, fen, confirmed, before_fen, target_uci, capture_uci, focus_square)
         if show_popup and self.popup:
             try:
                 self.popup(job_id, source_bounds)
@@ -99,7 +101,7 @@ class JobStore:
                 self.update(job, popup_error='팝업 런타임을 열지 못했습니다. ChessLens 웹 화면을 사용하세요.')
         return self.snapshot(job_id)
 
-    def process(self, job, payload, fen, confirmed, before_fen, target_uci, capture_uci=""):
+    def process(self, job, payload, fen, confirmed, before_fen, target_uci, capture_uci="", focus_square=""):
         try:
             if job['_cancel'].is_set():
                 return
@@ -116,16 +118,18 @@ class JobStore:
                 self.update(job, status='needs_input', progress_stage='판·게임 정보 확인', needs_review=True,
                             clarifications=[dict(id='confirm-position', text='판 전체·차례·캐슬링·앙파상 권리를 확인하세요. 직전 수를 설명하려면 이전 FEN과 대상 수가 필요합니다.')])
                 return
-            self.analyse(job, fen, before_fen, target_uci, capture_uci)
+            self.analyse(job, fen, before_fen, target_uci, capture_uci, focus_square)
         except AnalysisCancelled:
             pass
         except Exception as exc:
             self.update(job, status='failed', progress_stage='실패', error=str(exc)[:400])
 
-    def analyse(self, job, fen, before_fen, target_uci, capture_uci=""):
+    def analyse(self, job, fen, before_fen, target_uci, capture_uci="", focus_square=""):
         if not self.update(job, status='analyzing', progress_stage='Stockfish 분석', needs_review=False, clarifications=[]):
             return
         options = {'capture_uci': capture_uci} if capture_uci else {}
+        if focus_square:
+            options['focus_square'] = focus_square
         result = self.analyser(fen, self.config.engine_path, before_fen, target_uci, cancelled=job['_cancel'], **options)
         self.update(job, status='ready', progress_stage='완료', result=result)
 
@@ -133,7 +137,7 @@ class JobStore:
         if not answer.confirmed_history:
             raise HTTPException(400, '게임 정보 확인이 필요합니다.')
         try:
-            capture_options(answer.fen, answer.before_fen, answer.target_uci, answer.capture_uci)
+            capture_options(answer.fen, answer.before_fen, answer.target_uci, answer.capture_uci, answer.focus_square)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
         with self.lock:
@@ -141,8 +145,8 @@ class JobStore:
             if job['status'] != 'needs_input' or answer.revision != job['revision'] or answer.question_id != 'confirm-position':
                 raise HTTPException(409, '세션이 변경됐습니다. 최신 확인 질문을 다시 불러오세요.')
             self.update(job, status='queued', progress_stage='분석 대기', needs_review=False, proposed_fen=answer.fen,
-                        before_fen=answer.before_fen, target_uci=answer.target_uci, capture_uci=answer.capture_uci)
-            self.pool.submit(self.process, job, b'', answer.fen, True, answer.before_fen, answer.target_uci, answer.capture_uci)
+                        before_fen=answer.before_fen, target_uci=answer.target_uci, capture_uci=answer.capture_uci, focus_square=answer.focus_square)
+            self.pool.submit(self.process, job, b'', answer.fen, True, answer.before_fen, answer.target_uci, answer.capture_uci, answer.focus_square)
         return self.snapshot(job_id)
 
     def cancel(self, job_id):
@@ -206,7 +210,7 @@ def install_explanation_api(app, recognize_payload, web_dir, popup=None, analyse
     @app.post('/api/explanations/capture-options')
     def preview_capture(position: CapturePreview):
         try:
-            return capture_options(position.fen, position.before_fen, position.target_uci)
+            return capture_options(position.fen, position.before_fen, position.target_uci, focus_square=position.focus_square)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
 
@@ -215,7 +219,7 @@ def install_explanation_api(app, recognize_payload, web_dir, popup=None, analyse
                      image: UploadFile | None = File(None), fen: str = Form('', max_length=120),
                      confirmed_history: bool = Form(False), before_fen: str = Form('', max_length=120),
                      target_uci: str = Form('', max_length=5), show_popup: bool = Form(False),
-                     source_bounds: str = Form(''), capture_uci: str = Form('', max_length=5)):
+                     source_bounds: str = Form(''), capture_uci: str = Form('', max_length=5), focus_square: str = Form('', max_length=2)):
         payload = b''
         if image:
             if image.content_type not in {'image/png', 'image/jpeg'}:
@@ -242,7 +246,7 @@ def install_explanation_api(app, recognize_payload, web_dir, popup=None, analyse
             raise HTTPException(400, '이미지 또는 FEN을 입력하세요.')
         if fen and confirmed_history:
             try:
-                capture_options(fen, before_fen, target_uci, capture_uci)
+                capture_options(fen, before_fen, target_uci, capture_uci, focus_square)
             except ValueError as exc:
                 raise HTTPException(422, str(exc)) from exc
         try:
@@ -253,7 +257,7 @@ def install_explanation_api(app, recognize_payload, web_dir, popup=None, analyse
                 raise ValueError()
         except (ValueError, TypeError):
             raise HTTPException(422, '화면 위치 형식 오류')
-        return store.create(request_id, question, payload, fen, confirmed_history, before_fen, target_uci, show_popup, bounds, capture_uci)
+        return store.create(request_id, question, payload, fen, confirmed_history, before_fen, target_uci, show_popup, bounds, capture_uci, focus_square)
 
     @app.get('/api/explanations/{job_id}')
     def get_job(job_id: str):

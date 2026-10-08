@@ -15,6 +15,7 @@ from fastapi import FastAPI
 
 FEN = '5r1k/6pp/7N/8/8/1Q6/8/K7 w - - 0 1'
 AFTER_RF6 = 'r3qr1k/pp3pbp/2pn1R2/7Q/3pP3/2NB3P/PPP3P1/R5K1 b - - 1 19'
+QUEEN_A6 = '2kr3r/Pp1b3p/Q1p1pqp1/3p4/5B1b/6N1/P1P3PP/1R3R1K b - - 0 1'
 
 
 def wait_job(client, jid, status):
@@ -233,3 +234,65 @@ def test_recommended_move_capture_is_an_explicit_future_variation():
     assert capture['comparison_stage']=='after_recommendation'
     assert capture['score_fen']!=result['root_fen']
     assert [s['san'] for s in capture['steps']]==['Qg8+','Rxg8','Nf7#']
+
+
+def test_focus_limits_capture_to_questioned_queen_not_other_piece():
+    all_options = capture_options(QUEEN_A6)
+    assert {'b7a6', 'f6f4'} <= {c['uci'] for c in all_options['captures']}
+    options = capture_options(QUEEN_A6, focus_square='a6')
+    assert options['focus']['piece'] == 'Q'
+    assert [c['uci'] for c in options['captures']] == ['b7a6']
+    with pytest.raises(ValueError):
+        capture_options(QUEEN_A6, focus_square='a6', capture_uci='f6f4')
+    for invalid in ['a5', 'c8', 'f6', 'z9']:
+        with pytest.raises(ValueError):
+            capture_options(QUEEN_A6, focus_square=invalid)
+
+
+def test_uncapturable_focus_does_not_substitute_other_capture_or_future_move():
+    options = capture_options(QUEEN_A6, focus_square='b1')
+    assert not options['captures'] and options['reason_ko']
+    ep = capture_options('4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1', focus_square='d5')
+    assert ep['captures'][0]['uci'] == 'e5d6'
+    target = capture_options(FEN, target_uci='b3g8', focus_square='g8')
+    assert target['focus']['piece']=='Q' and target['captures'][0]['uci']=='f8g8'
+
+
+def test_focus_api_validates_and_preserves_requested_piece_and_identity():
+    received = {}
+    def analyse(*args, **kwargs):
+        received.update(kwargs)
+        return {'brief_en':'Verified, sir.'}
+    with client_for(analyse) as client:
+        body=dict(request_id='queen-focus', fen=QUEEN_A6, confirmed_history='true', focus_square='a6')
+        jid=client.post('/api/explanations', data=body).json()['job_id']
+        job=wait_job(client,jid,'ready')
+        assert job['focus_square']=='a6' and received['focus_square']=='a6'
+        assert client.post('/api/explanations',data={**body,'focus_square':'f4'}).status_code==409
+        preview=client.post('/api/explanations/capture-options',json={'fen':QUEEN_A6,'focus_square':'a6'}).json()
+        assert [c['uci'] for c in preview['captures']]==['b7a6']
+        assert client.post('/api/explanations',data={**body,'request_id':'wrong-capture','capture_uci':'f6f4'}).status_code==422
+        pending=client.post('/api/explanations',data={'request_id':'refocus','fen':QUEEN_A6}).json()['job_id']
+        review=wait_job(client,pending,'needs_input')
+        answer=dict(revision=review['revision'],question_id='confirm-position',fen=QUEEN_A6,confirmed_history=True,focus_square='a6')
+        assert client.post('/api/explanations/'+pending+'/answers',json={**answer,'capture_uci':'f6f4'}).status_code==422
+        assert client.post('/api/explanations/'+pending+'/answers',json=answer).status_code==200
+        assert wait_job(client,pending,'ready')['focus_square']=='a6'
+
+
+def test_real_queen_sacrifice_capture_reply_and_no_false_cause_claim():
+    engine=Path.home()/'Documents/stockfish/stockfish-windows-x86-64-avx2.exe'
+    if not engine.exists():
+        pytest.skip('Local Stockfish integration fixture')
+    result=explain(QUEEN_A6,engine,focus_square='a6',movetime_ms=300)
+    best,capture=result['branches']
+    assert capture['steps'][0]['uci']=='b7a6'
+    assert capture['steps'][0]['facts'][1]['piece']=='Q'
+    assert capture['mate']==best['mate']==-1
+    assert capture['steps'][1]['facts'][-1]['kind']=='checkmate'
+    assert result['capture_comparison']['response_san']==capture['steps'][1]['san']
+    assert '퀸' in result['brief_ko'] and '최선으로 대응해도' in result['brief_ko']
+    assert 'queen' in result['brief_en'] and len(result['brief_en'].split())<=35
+    uncatchable=explain(QUEEN_A6,engine,focus_square='b1',movetime_ms=100)
+    assert len(uncatchable['branches'])==1 and not uncatchable['capture_comparison']['available']
+    assert uncatchable['capture_comparison']['focus']['square']=='b1'

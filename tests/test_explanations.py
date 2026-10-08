@@ -296,3 +296,15 @@ def test_real_queen_sacrifice_capture_reply_and_no_false_cause_claim():
     uncatchable=explain(QUEEN_A6,engine,focus_square='b1',movetime_ms=100)
     assert len(uncatchable['branches'])==1 and not uncatchable['capture_comparison']['available']
     assert uncatchable['capture_comparison']['focus']['square']=='b1'
+
+
+def test_readable_moves_describe_capture_promotion_and_en_passant_without_san():
+    board = chess.Board(QUEEN_A6)
+    steps = replay_steps(board, [chess.Move.from_uci('b7a6'), chess.Move.from_uci('a7a8q')], chess.BLACK, 'plain')
+    assert 'bxa6' not in steps[0]['text_ko']
+    assert '흑 b7 폰이 a6의 퀸을 잡습니다.' == steps[0]['text_ko']
+    assert steps[1]['text_ko'] == '백이 a7 폰을 a8로 밀어 퀸으로 승격합니다. 체크메이트입니다.'
+    ep = chess.Board('4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1')
+    step = replay_steps(ep, [chess.Move.from_uci('e5d6')], chess.WHITE, 'ep')[0]
+    assert '상대 폰을 앙파상으로 잡습니다.' in step['text_ko']
+    assert step['facts'][1]['square'] == 'd5'

@@ -38,6 +38,42 @@ def prepare_position(fen, before_fen="", target_uci=""):
     return root, target
 
 
+def move_words(board, move):
+    names = {1: '폰', 2: '나이트', 3: '비숍', 4: '룩', 5: '퀸', 6: '왕'}
+    side = '백' if board.turn else '흑'
+    mover = names[board.piece_at(move.from_square).piece_type]
+    origin, dest = chess.square_name(move.from_square), chess.square_name(move.to_square)
+    subject = '가' if mover == '나이트' else '이'
+    victim_square = move.to_square + (-8 if board.turn else 8) if board.is_en_passant(move) else move.to_square
+    victim = board.piece_at(victim_square) if board.is_capture(move) else None
+    if board.is_castling(move):
+        return f"{side}이 {'킹사이드' if board.is_kingside_castling(move) else '퀸사이드'} 캐슬링", '캐슬링'
+    if victim:
+        name = names[victim.piece_type]
+        action = f"{side} {origin} {mover}{subject} {dest}의 {name}{'를' if name == '나이트' else '을'} 잡기"
+        short = f"{mover}{'로' if mover == '나이트' else '으로'} {name} 잡기"
+        if board.is_en_passant(move):
+            action = f"{side} {origin} 폰이 {dest}로 이동해 상대 폰을 앙파상으로 잡기"
+    elif mover == '폰':
+        action, short = f'{side}이 {origin} 폰을 {dest}로 밀기', f'{dest} 폰 전진'
+    else:
+        action, short = f'{side}이 {origin} {mover}을 {dest}로 이동' if mover != '나이트' else f'{side}이 {origin} 나이트를 {dest}로 이동', f'{dest} {mover} 이동'
+    if move.promotion:
+        promoted = names[move.promotion]
+        action += f" 후 {promoted}{'로' if promoted == '나이트' else '으로'} 승격"
+        short += f' · {promoted} 승격'
+    return action, short
+
+
+def readable_action(action):
+    action = action.replace('밀기 후 ', '밀어 ').replace('잡기 후 ', '잡고 ')
+    endings = {'잡기': '잡습니다', '밀기': '밉니다', '이동': '이동합니다', '승격': '승격합니다', '캐슬링': '캐슬링합니다'}
+    for ending, replacement in endings.items():
+        if action.endswith(ending):
+            return action[:-len(ending)] + replacement + '.'
+    return action + '.'
+
+
 def replay_steps(root, moves, viewpoint, branch_id):
     board = root.copy()
     steps = []
@@ -47,22 +83,11 @@ def replay_steps(root, moves, viewpoint, branch_id):
         if move not in board.legal_moves:
             raise ValueError("엔진 수순에 합법적이지 않은 수가 있습니다.")
         san = board.san(move)
-        side = "백" if board.turn else "흑"
+        action, short = move_words(board, move)
         captured_square = (move.to_square + (-8 if board.turn else 8)) if board.is_en_passant(move) else move.to_square
         captured = board.piece_at(captured_square) if board.is_capture(move) else None
         facts = [dict(id=f"{branch_id}:{i}:move", kind="legal_move", uci=move.uci(), san=san)]
-        names = {1: '폰', 2: '나이트', 3: '비숍', 4: '룩', 5: '퀸', 6: '왕'}
-        mover = names[board.piece_at(move.from_square).piece_type]
-        text = f"{side} {mover}이 {chess.square_name(move.to_square)}로 이동합니다." if mover in ('폰', '룩', '왕', '퀸', '비숍') else f"{side} {mover}가 {chess.square_name(move.to_square)}로 이동합니다."
-        if board.is_castling(move):
-            text = f"{side}이 {'킹사이드' if board.is_kingside_castling(move) else '퀸사이드'} 캐슬링을 합니다."
         if captured:
-            name = names[captured.piece_type]
-            subject = '이' if mover in ('폰', '룩', '왕', '퀸', '비숍') else '가'
-            particle = '을' if name in ('폰', '룩', '퀸', '왕', '비숍') else '를'
-            text = f"{side} {mover}{subject} {name}{particle} 잡습니다."
-            if board.is_en_passant(move):
-                text += " 앙파상입니다."
             facts.append(dict(id=f"{branch_id}:{i}:capture", kind="capture", piece=captured.symbol(), square=chess.square_name(captured_square)))
         before = board.fen()
         animation_moves = [dict(from_square=chess.square_name(move.from_square), to_square=chess.square_name(move.to_square))]
@@ -72,19 +97,11 @@ def replay_steps(root, moves, viewpoint, branch_id):
             animation_moves.append(dict(from_square=('h' if kingside else 'a')+rank, to_square=('f' if kingside else 'd')+rank))
         board.push(move)
         if board.is_checkmate():
-            text += " 체크메이트입니다."
             facts.append(dict(id=f"{branch_id}:{i}:mate", kind="checkmate"))
-        elif board.is_check():
-            text += " 체크입니다."
-        if move.promotion:
-            name = names[move.promotion]
-            text += f" 폰을 {name}{'로' if name == '나이트' else '으로'} 승격합니다."
-        if board.is_stalemate():
-            text += " 둘 수 있는 수가 없어 무승부입니다(스테일메이트)."
         steps.append(dict(id=f"{branch_id}:{i}", before_fen=before, after_fen=board.fen(), uci=move.uci(), san=san,
                           from_square=chess.square_name(move.from_square), to_square=chess.square_name(move.to_square),
                           animation_moves=animation_moves,
-                          text_ko=text, facts=facts, material_delta=material(board)-baseline))
+                          text_ko=readable_action(action) + (" 체크메이트입니다." if board.is_checkmate() else " 체크입니다." if board.is_check() else " 둘 수 있는 수가 없어 무승부입니다." if board.is_stalemate() else ""), short_ko=short, facts=facts, material_delta=material(board)-baseline))
     return steps
 
 
@@ -113,15 +130,13 @@ def capture_options(fen, before_fen="", target_uci="", capture_uci="", focus_squ
         chosen = chess.Move.from_uci(capture_uci)
         if chosen not in moves:
             raise ValueError("선택한 잡기는 이 차례에 둘 수 없습니다. 차례와 말을 다시 확인하세요.")
-    names = {1: '폰', 2: '나이트', 3: '비숍', 4: '룩', 5: '퀸', 6: '왕'}
     choices = []
     for move in moves:
         square = move.to_square + (-8 if board.turn else 8) if board.is_en_passant(move) else move.to_square
         victim = board.piece_at(square)
-        mover = board.piece_at(move.from_square)
         choices.append(dict(uci=move.uci(), san=board.san(move), from_square=chess.square_name(move.from_square),
                             to_square=chess.square_name(move.to_square), captured_piece=victim.symbol(),
-                            label_ko=f"{names[mover.piece_type]} → {names[victim.piece_type]} 잡기 ({board.san(move)})"))
+                            label_ko=move_words(board, move)[0]))
     return dict(turn='white' if board.turn else 'black', stage='after_target' if target else 'current', captures=choices,
                 targets=targets, focus=focus,
                 reason_ko=f"{focus['label_ko']}을 잡는 합법적인 수가 없습니다." if focus and not moves else '')
@@ -202,7 +217,7 @@ def explain(fen, engine_path: Path | None, before_fen="", target_uci="", cancell
                 names = {1:'폰', 2:'나이트', 3:'비숍', 4:'룩', 5:'퀸', 6:'왕'}
                 name = names[victim.piece_type]
                 who = '백' if capture_board.turn else '흑'
-                label = f"{who}이 {name}{'를' if name == '나이트' else '을'} 잡으면 ({capture_board.san(move)})"
+                label = f"{who}이 {name}{'를' if name == '나이트' else '을'} 잡으면"
                 branch(capture, prefix, label, 'capture', not forced, stage)
                 comparison = dict(available=True, stage=stage, selected_uci=move.uci(), conditional=not forced,
                                   reason_ko='이 잡기만 둘 수 있습니다.' if forced else '이 수로 잡는 경우를 가정한 수순입니다.')
@@ -235,20 +250,19 @@ def explain(fen, engine_path: Path | None, before_fen="", target_uci="", cancell
             ko = comparison['reason_ko'] + ' 다른 기물을 잡는 수로 바꾸지 않았습니다.'
             en = 'There is no legal capture of the selected piece in this position, sir.'
         else:
-            first = capture_branch['steps'][0 if not target else 1]
             replies = capture_branch['steps'][(1 if not target else 2):]
             response = replies[0]['san'] if replies else ''
-            ko = f"{focus['label_ko']}을 잡는 {first['san']} 이후를 분석했습니다."
+            focus_name = ("백" if focus["piece"].isupper() else "흑") + " " + {"p":"폰","n":"나이트","b":"비숍","r":"룩","q":"퀸"}[focus["piece"].lower()]
+            ko = f"{focus_name}{'를' if focus['piece'].lower() == 'n' else '을'} 잡은 뒤의 포지션을 분석했습니다."
             if response:
-                ko += f" 상대의 핵심 응수는 {response}입니다."
+                ko += " 상대의 최선 대응: " + replies[0]["text_ko"]
             losing_mate = capture_branch['mate'] not in (None, 0) and (
                 (capture_branch['mate'] > 0) != (capture_board.turn == viewpoint))
             first_reply_mate = replies and any(f['kind'] == 'checkmate' for f in replies[0]['facts'])
             if losing_mate:
                 winner = 'White' if not capture_board.turn else 'Black'
-                ko += ' 기물을 얻어도 체크메이트를 막지 못합니다.'
-                ko += (' 다음 한 수에 체크메이트됩니다.' if first_reply_mate else
-                       f" 엔진 수순에서는 {abs(capture_branch['mate'])}수 안에 체크메이트됩니다.")
+                if not first_reply_mate:
+                    ko += f" 이 수순에서는 {abs(capture_branch['mate'])}수 안에 체크메이트됩니다."
                 en = (f"Capturing the {'queen' if focus['piece'].lower() == 'q' else 'selected piece'} allows "
                       f"{winner} to force checkmate. Follow the reply on the board, sir.")
                 if branches[0]['mate'] not in (None, 0) and ((branches[0]['mate'] > 0) != (capture_board.turn == viewpoint)):
@@ -258,6 +272,23 @@ def explain(fen, engine_path: Path | None, before_fen="", target_uci="", cancell
                 en = 'The selected capture is analysed. This line does not establish that capturing is a mistake, sir.'
             comparison['response_san'] = response
     comparison['focus'] = options['focus']
+    for line in branches:
+        if line['kind'] == 'capture' and options['focus']:
+            line['brief_ko'] = ko
+        else:
+            move_text = line['steps'][0]['text_ko'].rstrip('.') if line['steps'] else ''
+            line['brief_ko'] = (('엔진 추천: ' if line['kind'] == 'best' else '선택한 수순: ') + line['steps'][0]['text_ko']) if move_text else '이어질 수가 없습니다.'
+            if line['mate'] not in (None, 0) and not any(f['kind'] == 'checkmate' for f in line['steps'][0]['facts']):
+                winner = ('백' if viewpoint else '흑') if line['mate'] > 0 else ('흑' if viewpoint else '백')
+                line['brief_ko'] += f" 최선으로 대응해도 {winner}이 {abs(line['mate'])}수 안에 체크메이트할 수 있습니다."
+            elif line['score_cp'] is not None:
+                score = line['score_cp']
+                leader = ('백' if viewpoint else '흑') if score > 0 else ('흑' if viewpoint else '백')
+                line['brief_ko'] += f' {leader}이 유리합니다.' if score else ' 양쪽이 균형입니다.'
+            if line['kind'] == 'capture':
+                line['brief_ko'] = '이 기물을 잡은 뒤의 포지션을 분석했습니다. ' + line['brief_ko']
+    if not options['focus'] and shown:
+        ko = shown['brief_ko']
     return dict(schema_version=1, fen=fen, root_fen=root.fen(), provenance="user_confirmed_game_state",
                 assumptions=["차례와 캐슬링·앙파상 가능 여부는 직접 확인한 정보를 기준으로 합니다."],
                 engine=dict(name=engine_name, threads=1, hash_mib=64, per_branch_ms=movetime_ms,

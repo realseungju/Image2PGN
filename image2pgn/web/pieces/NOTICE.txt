@@ -1,0 +1,8 @@
+Chess piece artwork: Colin M. L. Burnett (Cburnett).
+Generated from the piece SVG definitions distributed with python-chess 1.11.2.
+The artwork is triple licensed under GFDL, BSD and GPL. This distribution uses
+the GPL option; a copy of GPL version 3 is included in COPYING.txt.
+
+Artwork source: https://en.wikipedia.org/wiki/User:Cburnett
+SVG provenance: https://python-chess.readthedocs.io/en/latest/svg.html
+Library source: https://github.com/niklasf/python-chess/blob/master/chess/svg.py

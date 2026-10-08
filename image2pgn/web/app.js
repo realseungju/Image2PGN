@@ -704,6 +704,12 @@ async function analyze() {
 }
 
 function init() {
+  qs("explanation-button").onclick = () => {
+    const item = activeItem();
+    if (!item?.analysisFen) return;
+    sessionStorage.setItem("chesslens-confirmed-fen", item.analysisFen);
+    location.href = "/explain";
+  };
   renderPalette();
   renderBoard();
   syncFen();

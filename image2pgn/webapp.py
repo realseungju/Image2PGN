@@ -123,6 +123,31 @@ def create_app(model_path: Path | None = None, engine_path: Path | None = None, 
         except RuntimeError as exc:
             raise HTTPException(502, f"Stockfish analysis failed: {exc}") from exc
 
+    from .explanation_api import install_explanation_api
+    from .popup import open_popup
+
+    def recognize_payload(payload):
+        config = app.state.config
+        if config.model_path is None or not config.model_path.is_file():
+            raise FileNotFoundError("PieceCNN 모델 경로를 확인하세요.")
+        path = None
+        try:
+            with tempfile.NamedTemporaryFile(prefix="chesslens-review-", suffix=".png", delete=False) as file:
+                file.write(payload)
+                path = Path(file.name)
+            result = recognize_fen_cnn_result(
+                image_path=path, model_path=config.model_path, orientation="auto", device=config.device,
+                threshold=0.5, board_detector="grid-v2", suppress_empty_background=False,
+                low_confidence_policy="review", retain_board_image=True)
+            return dict(placement=result.placement, orientation=result.orientation,
+                        orientation_status=result.orientation_status, orientation_details=result.orientation_details,
+                        review_squares=list(result.review_squares), board_details=result.board_details,
+                        board_image=_png_data_url(result.board_image))
+        finally:
+            if path:
+                path.unlink(missing_ok=True)
+
+    install_explanation_api(app, recognize_payload, WEB_DIR, popup=open_popup)
     return app
 
 

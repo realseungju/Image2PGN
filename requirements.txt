@@ -18,3 +18,6 @@ httpx>=0.27
 # Multiscale board proposals reuse OpenCV/NumPy; no new dependencies.
 # Full-grid validation and candidate selection reuse OpenCV/NumPy.
 # Local web MVP uses FastAPI/Uvicorn; uploads are processed in temporary files.
+
+# Bounded image header validation for explanation uploads.
+Pillow>=10.0

@@ -170,6 +170,38 @@ def background_empty_squares(squares: list[list[np.ndarray]]) -> list[list[bool]
     return [empty[r * 8:(r + 1) * 8] for r in range(8)]
 
 
+def colored_overlay_review(board_image: np.ndarray) -> tuple[np.ndarray, list[list[float]]]:
+    """Neutralize long colored marks only on predominantly achromatic boards.
+
+    This produces auxiliary evidence, never a replacement source image or a
+    confirmed position. Isolated colored pieces and colored board themes are
+    deliberately excluded. Covered pieces may be unrecoverable and need review.
+    """
+    hsv = cv2.cvtColor(board_image, cv2.COLOR_BGR2HSV)
+    coverage = [[0.0] * 8 for _ in range(8)]
+    if np.mean(hsv[:, :, 1] < 40) < 0.78:
+        return board_image, coverage
+    mask = ((hsv[:, :, 1] > 100) & (hsv[:, :, 2] > 100)).astype(np.uint8)
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(mask, 8)
+    cell = min(board_image.shape[:2]) / 8
+    accepted = np.zeros(mask.shape, dtype=np.uint8)
+    for index in range(1, count):
+        x, y, width, height, area = stats[index]
+        if max(width, height) >= cell * 1.5 and area >= cell * cell * 0.12:
+            accepted[labels == index] = 255
+    if not np.any(accepted):
+        return board_image, coverage
+    # Include antialiased color edges without erasing a broad piece outline.
+    accepted = cv2.dilate(accepted, np.ones((3, 3), np.uint8))
+    for r, row in enumerate(split_squares(accepted)):
+        for c, square in enumerate(row):
+            fraction = float(np.mean(square > 0))
+            if fraction >= 0.015:
+                coverage[r][c] = fraction
+    cleaned = cv2.inpaint(board_image, accepted, 5, cv2.INPAINT_TELEA)
+    return cleaned, coverage
+
+
 def split_squares(board_image: np.ndarray) -> list[list[np.ndarray]]:
     height, width = board_image.shape[:2]
     square_h = height // 8

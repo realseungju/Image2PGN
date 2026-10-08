@@ -308,3 +308,20 @@ def test_readable_moves_describe_capture_promotion_and_en_passant_without_san():
     step = replay_steps(ep, [chess.Move.from_uci('e5d6')], chess.WHITE, 'ep')[0]
     assert '상대 폰을 앙파상으로 잡습니다.' in step['text_ko']
     assert step['facts'][1]['square'] == 'd5'
+
+
+def test_overlay_review_cannot_be_bypassed_by_generic_confirmation():
+    seen = []
+    def analyser(*a, **k):
+        seen.append(True)
+        return {'brief_en': 'Verified, sir.'}
+    recognition = dict(placement=FEN.split()[0], review_squares=[dict(screen_row=1,screen_col=2,reason='colored_overlay',score=.999)])
+    with client_for(analyser, recognition) as client:
+        jid = client.post('/api/explanations',data={'request_id':'overlay-review'},files={'image':('x.png',png(),'image/png')}).json()['job_id']
+        review = wait_job(client,jid,'needs_input')
+        answer = dict(revision=review['revision'],question_id='confirm-position',fen=FEN,confirmed_history=True)
+        response = client.post('/api/explanations/'+jid+'/answers',json=answer)
+        assert response.status_code == 400 and '색 표시' in response.json()['detail']
+        assert not seen and client.get('/api/explanations/'+jid).json()['status']=='needs_input'
+        assert client.post('/api/explanations/'+jid+'/answers',json={**answer,'confirmed_overlays':True}).status_code == 200
+        assert wait_job(client,jid,'ready')['result']['brief_en']=='Verified, sir.'

@@ -27,6 +27,7 @@ class Answers(BaseModel):
     question_id: str
     fen: str = Field(min_length=5, max_length=120)
     confirmed_history: bool = False
+    confirmed_overlays: bool = False
     before_fen: str = Field(default="", max_length=120)
     target_uci: str = Field(default="", max_length=5)
     capture_uci: str = Field(default="", max_length=5)
@@ -144,6 +145,9 @@ class JobStore:
             job = self.get(job_id)
             if job['status'] != 'needs_input' or answer.revision != job['revision'] or answer.question_id != 'confirm-position':
                 raise HTTPException(409, '세션이 변경됐습니다. 최신 확인 질문을 다시 불러오세요.')
+            hints = (job.get('recognition') or {}).get('review_squares', [])
+            if any(isinstance(h, dict) and h.get('reason') == 'colored_overlay' for h in hints) and not answer.confirmed_overlays:
+                raise HTTPException(400, '색 표시가 겹친 칸의 확인이 필요합니다.')
             self.update(job, status='queued', progress_stage='분석 대기', needs_review=False, proposed_fen=answer.fen,
                         before_fen=answer.before_fen, target_uci=answer.target_uci, capture_uci=answer.capture_uci, focus_square=answer.focus_square)
             self.pool.submit(self.process, job, b'', answer.fen, True, answer.before_fen, answer.target_uci, answer.capture_uci, answer.focus_square)

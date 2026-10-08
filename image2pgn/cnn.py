@@ -8,7 +8,7 @@ from collections import defaultdict
 import cv2
 import numpy as np
 
-from .board import background_empty_squares, load_image, save_debug_board, split_squares, warp_board_result
+from .board import background_empty_squares, colored_overlay_review, load_image, save_debug_board, split_squares, warp_board_result
 from .board import BoardDetectionResult
 from .board_review import load_correction, corrected_board
 from .fen import compress_board, orient_board
@@ -188,6 +188,10 @@ def recognize_fen_cnn_result(
         print(f"Board requires review: method={detection.details['method']} "
               f"reason={detection.details['fallback_reason'] or 'contour_is_not_board_confirmation'}", flush=True)
     squares = split_squares(board_image)
+    overlay_image, overlay_coverage = (colored_overlay_review(board_image) if low_confidence_policy == "review"
+                                       else (board_image, [[0.0] * 8 for _ in range(8)]))
+    overlay_squares = split_squares(overlay_image)
+    overlay_empty = background_empty_squares(overlay_squares) if any(map(any, overlay_coverage)) else [[False] * 8 for _ in range(8)]
     empty_background = background_empty_squares(squares) if suppress_empty_background else [[False] * 8 for _ in range(8)]
 
     if debug_dir is not None:
@@ -211,10 +215,27 @@ def recognize_fen_cnn_result(
                 class_name = class_name_from_prediction(
                     class_names, index, float(score.item()), threshold, empty_score=empty_score if low_confidence_policy == "review" else None
                 )
+                hint = None
                 if class_names[index] != "empty" and float(score.item()) < threshold:
+                    hint = {"reason": "low_confidence"}
+                coverage = overlay_coverage[row_index][col_index]
+                if coverage:
+                    hint = {"reason": "colored_overlay", "overlay_fraction": coverage,
+                            "auto_corrected": False}
+                    auxiliary = _square_to_tensor(overlay_squares[row_index][col_index], torch).unsqueeze(0).to(resolved_device)
+                    clean_probs = torch.softmax(model(auxiliary), dim=1)
+                    clean_empty = float(clean_probs[0, class_names.index("empty")].item())
+                    hint["clean_empty_score"] = clean_empty
+                    # Only remove a phantom piece with independent empty evidence.
+                    # Never substitute an inpainted piece type or erase a full highlight.
+                    if class_name != "empty" and coverage < 0.5 and clean_empty >= 0.995 and overlay_empty[row_index][col_index]:
+                        class_name = "empty"
+                        hint["auto_corrected"] = True
+                if hint is not None:
                     review_squares.append({"screen_row": row_index, "screen_col": col_index,
                                            "class_name": class_names[index],
-                                           "score": float(score.item()), "empty_score": empty_score})
+                                           "score": float(score.item()), "empty_score": empty_score,
+                                           "proposed_class_name": class_name, **hint})
                 if empty_background[row_index][col_index]:
                     class_name = "empty"
                 if infer_color_from_image and class_name != "empty":
@@ -223,7 +244,7 @@ def recognize_fen_cnn_result(
             board.append(fen_row)
 
     if review_squares:
-        print(f"Review {len(review_squares)} low-confidence piece candidate(s).", flush=True)
+        print(f"Review {len(review_squares)} uncertain or overlay-covered square(s).", flush=True)
 
     if orientation == "auto":
         white_placement = compress_board(orient_board(board, "white"))

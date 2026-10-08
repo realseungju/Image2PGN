@@ -88,14 +88,41 @@ def replay_steps(root, moves, viewpoint, branch_id):
     return steps
 
 
-def explain(fen, engine_path: Path | None, before_fen="", target_uci="", cancelled=None, movetime_ms=700):
+def capture_options(fen, before_fen="", target_uci="", capture_uci=""):
+    """Only legal captures; this does not infer a previous move or call an engine."""
     root, target = prepare_position(fen, before_fen, target_uci)
+    board = root.copy()
+    if target:
+        board.push(target)
+    moves = list(board.generate_legal_captures())
+    if capture_uci:
+        chosen = chess.Move.from_uci(capture_uci)
+        if chosen not in moves:
+            raise ValueError("선택한 잡기는 이 차례에 둘 수 없습니다. 차례와 말을 다시 확인하세요.")
+    names = {1: '폰', 2: '나이트', 3: '비숍', 4: '룩', 5: '퀸', 6: '왕'}
+    choices = []
+    for move in moves:
+        square = move.to_square + (-8 if board.turn else 8) if board.is_en_passant(move) else move.to_square
+        victim = board.piece_at(square)
+        mover = board.piece_at(move.from_square)
+        choices.append(dict(uci=move.uci(), san=board.san(move), from_square=chess.square_name(move.from_square),
+                            to_square=chess.square_name(move.to_square), captured_piece=victim.symbol(),
+                            label_ko=f"{names[mover.piece_type]} → {names[victim.piece_type]} 잡기 ({board.san(move)})"))
+    return dict(turn='white' if board.turn else 'black', stage='after_target' if target else 'current', captures=choices)
+
+
+def explain(fen, engine_path: Path | None, before_fen="", target_uci="", cancelled=None, movetime_ms=700, capture_uci=""):
+    root, target = prepare_position(fen, before_fen, target_uci)
+    capture_options(fen, before_fen, target_uci, capture_uci)
     viewpoint = root.turn
     def checkpoint():
         if cancelled and cancelled.is_set():
             raise AnalysisCancelled()
     checkpoint()
     branches = []
+    comparison = dict(available=False, reason_ko='지금 차례에 잡을 수 있는 말이 없습니다.')
+    if root.is_game_over():
+        comparison['reason_ko'] = '이미 끝난 게임이므로 잡기 수순을 분석하지 않습니다.'
     engine_name = "terminal position"
     if not root.is_game_over():
         engine = chess.engine.SimpleEngine.popen_uci(str(resolve_engine_path(engine_path)), timeout=10)
@@ -107,7 +134,7 @@ def explain(fen, engine_path: Path | None, before_fen="", target_uci="", cancell
                 info = engine.analyse(board, chess.engine.Limit(time=movetime_ms/1000), root_moves=allowed)
                 checkpoint()
                 return info
-            def branch(info, prefix, name, kind, conditional=False):
+            def branch(info, prefix, name, kind, conditional=False, comparison_stage='current'):
                 pv = prefix + info.get("pv", [])
                 score = info["score"].pov(viewpoint)
                 branch_id = f"branch-{len(branches)}"
@@ -115,6 +142,7 @@ def explain(fen, engine_path: Path | None, before_fen="", target_uci="", cancell
                 for move in prefix:
                     score_board.push(move)
                 branches.append(dict(id=branch_id, label_ko=name, kind=kind, conditional=conditional,
+                                     comparison_stage=comparison_stage,
                                      score_cp=score.score(), mate=score.mate(), depth=info.get("depth"),
                                      score_fen=score_board.fen(), score_stage_ko='선택한 수를 둔 뒤의 평가' if prefix else '분석을 시작한 판의 평가',
                                      steps=replay_steps(root, pv, viewpoint, branch_id)))
@@ -123,13 +151,42 @@ def explain(fen, engine_path: Path | None, before_fen="", target_uci="", cancell
             if target:
                 selected = analyse(root, [target])
                 branch(selected, [], "선택한 수에 대한 최선의 대응", "target")
-                after = root.copy()
-                after.push(target)
-                captures = [m for m in after.legal_moves if after.is_capture(m) and m.to_square == target.to_square]
-                if captures:
-                    capture = analyse(after, captures)
-                    forced = after.legal_moves.count() == 1
-                    branch(capture, [target], "상대가 기물을 잡으면" + (" (유일한 대응)" if forced else " (가정)"), "capture", not forced)
+            capture_board = root.copy()
+            prefix = []
+            stage = 'current'
+            if target:
+                capture_board.push(target)
+                prefix = [target]
+                stage = 'after_target'
+                captures = [m for m in capture_board.generate_legal_captures() if m.to_square == target.to_square]
+                comparison['reason_ko'] = '선택한 수를 둔 뒤 그 말을 잡는 합법적인 대응이 없습니다.'
+            else:
+                captures = list(capture_board.generate_legal_captures())
+            if capture_uci:
+                captures = [chess.Move.from_uci(capture_uci)]
+            elif not target and not captures and best.get('pv'):
+                # Explicit future variation, never a reconstruction of the screenshot's last move.
+                recommended = best['pv'][0]
+                capture_board.push(recommended)
+                prefix = [recommended]
+                stage = 'after_recommendation'
+                captures = [m for m in capture_board.generate_legal_captures() if m.to_square == recommended.to_square]
+                comparison['reason_ko'] = '지금 잡을 수 있는 말이 없고, 추천 수를 둔 뒤에도 그 말을 잡는 합법적인 대응이 없습니다.'
+            if captures and not capture_board.is_game_over():
+                capture = analyse(capture_board, captures)
+                if not capture.get('pv'):
+                    raise ValueError('엔진에서 잡기 수순을 받지 못했습니다. 다시 분석해주세요.')
+                move = capture.get('pv', [])[0]
+                forced = capture_board.legal_moves.count() == 1
+                square = move.to_square + (-8 if capture_board.turn else 8) if capture_board.is_en_passant(move) else move.to_square
+                victim = capture_board.piece_at(square)
+                names = {1:'폰', 2:'나이트', 3:'비숍', 4:'룩', 5:'퀸', 6:'왕'}
+                name = names[victim.piece_type]
+                who = '백' if capture_board.turn else '흑'
+                label = f"{who}이 {name}{'를' if name == '나이트' else '을'} 잡으면 ({capture_board.san(move)})"
+                branch(capture, prefix, label, 'capture', not forced, stage)
+                comparison = dict(available=True, stage=stage, selected_uci=move.uci(), conditional=not forced,
+                                  reason_ko='이 잡기만 둘 수 있습니다.' if forced else '이 수로 잡는 경우를 가정한 수순입니다.')
         finally:
             engine.quit()
     checkpoint()
@@ -148,16 +205,15 @@ def explain(fen, engine_path: Path | None, before_fen="", target_uci="", cancell
         ko = "이미 끝난 게임입니다. 이어서 재생할 수가 없습니다."
         en = "The confirmed position is already over. There are no further moves to replay, sir."
     capture_branch = next((b for b in branches if b['kind'] == 'capture'), None)
-    if capture_branch and capture_branch['steps']:
-        steps = capture_branch['steps']
-        end = chess.Board(steps[-1]['after_fen'])
-        if end.is_checkmate() and end.turn != viewpoint:
-            if capture_branch['conditional']:
-                ko += " 상대가 기물을 잡는 경우에도 체크메이트로 이어집니다."
+    if capture_branch and capture_branch['mate'] not in (None, 0):
+        capture_mate = capture_branch['mate']
+        winner = ('백' if viewpoint else '흑') if capture_mate > 0 else ('흑' if viewpoint else '백')
+        ko += f" 선택한 잡기 수순에서는 {winner}이 {abs(capture_mate)}수 안에 체크메이트할 수 있습니다."
+        en = f"In the capture variation, {'White' if winner == '백' else 'Black'} can force checkmate in {abs(capture_mate)} moves. The board compares it with the best defence, sir."
     return dict(schema_version=1, fen=fen, root_fen=root.fen(), provenance="user_confirmed_game_state",
                 assumptions=["차례와 캐슬링·앙파상 가능 여부는 직접 확인한 정보를 기준으로 합니다."],
                 engine=dict(name=engine_name, threads=1, hash_mib=64, per_branch_ms=movetime_ms,
                             max_calls=3, viewpoint="white" if viewpoint else "black"),
-                branches=branches, brief_ko=ko, brief_en=en,
+                branches=branches, capture_comparison=comparison, brief_ko=ko, brief_en=en,
                 caveats=["좋은 수인 이유를 분석하며, Chess.com의 ‘탁월한 수’ 판정을 확인하는 기능은 아닙니다.", "엔진이 제한된 시간에 찾은 수순입니다. ‘가정’으로 표시한 수순은 상대가 그렇게 대응할 때만 이어집니다."] +
                         ([] if before_fen else ["사진 한 장으로는 직전 수나 이미 잡힌 기물을 알 수 없습니다. 보이는 판에서 이어질 수를 분석합니다."]))

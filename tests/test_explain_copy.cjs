@@ -17,4 +17,6 @@ test('capture evaluation retains its later board context',()=>{
   const step={san:'Qg8+',to_square:'g8'};
   assert.equal(evaluation({mate:1,kind:'capture',steps:[step]},'white').context,'퀸을 g8로 옮긴 뒤의 평가');
   assert.equal(evaluation({mate:2,kind:'target',steps:[step]},'white').context,'분석을 시작한 판의 평가');
+  assert.equal(evaluation({mate:-4,kind:'capture',comparison_stage:'current',steps:[{san:'Bxf6',to_square:'f6'}]},'black').context,'분석을 시작한 판의 평가');
+  assert.equal(evaluation({mate:-4,kind:'capture',comparison_stage:'current'},'black').label,'백이 4수 안에 체크메이트');
 });

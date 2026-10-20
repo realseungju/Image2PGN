@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
+from collections import OrderedDict
 import hashlib
 import json
 import secrets
@@ -22,6 +23,7 @@ from pydantic import BaseModel, Field
 
 from .explanations import AnalysisCancelled, capture_options, explain
 from .master_games import MasterGames, RemoteFailure
+from .move_comparison import compare_move
 
 
 class Answers(BaseModel):
@@ -43,11 +45,19 @@ class CapturePreview(BaseModel):
     target_uci: str = Field(default="", max_length=5)
 
 
+class MoveComparisonRequest(BaseModel):
+    model_config = {'extra': 'forbid'}
+    game_id: str = Field(pattern=r'^[a-zA-Z0-9-]+$', min_length=1, max_length=64)
+    ply: int = Field(strict=True, ge=0, le=599)
+
+
 class JobStore:
     def __init__(self, recognize, config, popup=None, analyser=explain):
         self.recognize, self.config, self.popup, self.analyser = recognize, config, popup, analyser
         self.lock = threading.RLock()
         self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="chesslens")
+        self.comparison_gate = threading.Lock()
+        self.comparison_cache = OrderedDict()
         self.jobs = {}
         self.requests = {}
         self.token = secrets.token_urlsafe(32)
@@ -177,6 +187,7 @@ def install_explanation_api(app, recognize_payload, web_dir, popup=None, analyse
     store = JobStore(recognize_payload, app.state.config, popup, analyser)
     app.state.explanations = store
     app.state.master_games = MasterGames()
+    app.state.move_comparer = compare_move
 
     @app.middleware('http')
     async def local_security(request: Request, call_next):
@@ -304,6 +315,55 @@ def install_explanation_api(app, recognize_payload, web_dir, popup=None, analyse
         if job['status'] != 'ready' or not (job.get('result') or {}).get('fen'):
             raise HTTPException(409, '판과 게임 정보를 확인하고 분석을 마친 뒤 검색하세요.')
         return app.state.master_games.lookup(job['result']['fen'], remote=remote)
+
+    @app.post('/api/explanations/{job_id}/compare-move')
+    def compare_historical_move(job_id: str, selection: MoveComparisonRequest):
+        job = store.get(job_id)
+        if job['status'] != 'ready' or job['_cancel'].is_set():
+            raise HTTPException(409, '완료된 분석에서 실제 경기를 선택하세요.')
+        key = (job_id, selection.game_id, selection.ply)
+        with store.lock:
+            if key in store.comparison_cache:
+                store.comparison_cache.move_to_end(key)
+                return store.comparison_cache[key]
+        try:
+            game = app.state.master_games.resolve_game(job['result']['fen'], selection.game_id)
+            if selection.ply >= len(game['steps']):
+                raise ValueError('비교할 실제 경기 수가 없습니다.')
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+        if not store.comparison_gate.acquire(blocking=False):
+            raise HTTPException(429, '다른 수를 비교 중입니다. 잠시 뒤 다시 시도하세요.')
+        abandoned = threading.Event()
+        future = None
+        try:
+            future = store.pool.submit(app.state.move_comparer, game, selection.ply, store.config.engine_path,
+                                       cancelled=lambda: abandoned.is_set() or job['_cancel'].is_set())
+            # Keep the admission lock until the worker exits, including on timeout.
+            future.add_done_callback(lambda _: store.comparison_gate.release())
+            result = future.result(timeout=25)
+            with store.lock:
+                if job['_cancel'].is_set() or store.jobs.get(job_id) is not job:
+                    raise HTTPException(409, '닫히거나 만료된 비교입니다.')
+                store.comparison_cache[key] = result
+                while len(store.comparison_cache) > 64:
+                    store.comparison_cache.popitem(last=False)
+            return result
+        except FutureTimeout:
+            abandoned.set()
+            future.cancel()
+            raise HTTPException(504, '비교 시간이 초과됐습니다. 잠시 뒤 다시 시도하세요.') from None
+        except AnalysisCancelled:
+            raise HTTPException(409, '비교가 취소됐습니다.') from None
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+        except FileNotFoundError:
+            raise HTTPException(503, 'Stockfish 실행 파일을 찾지 못했습니다.') from None
+        except (OSError, RuntimeError, KeyError):
+            raise HTTPException(502, '엔진 비교를 마치지 못했습니다. 다시 시도하세요.') from None
+        finally:
+            if future is None:
+                store.comparison_gate.release()
 
     @app.post('/api/explanations/{job_id}/answers')
     def answers(job_id: str, answer: Answers):

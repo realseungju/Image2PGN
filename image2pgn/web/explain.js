@@ -24,16 +24,41 @@ function renderBoard(fen,editable=false){
   }
 }
 function error(e){$('error').hidden=false;$('error').textContent=e.message||String(e);}
-async function api(path,body){const response=await fetch(path,{method:body?'POST':'GET',headers:{'x-chesslens-token':token,...(body&&!(body instanceof FormData)?{'Content-Type':'application/json'}:{})},body:body instanceof FormData?body:body?JSON.stringify(body):undefined});if(!response.ok){let text=await response.text();try{text=JSON.parse(text).detail;}catch{}throw Error(typeof text==='string'?text:JSON.stringify(text));}return response.json();}
+async function api(path,body,options={}){const response=await fetch(path,{...options,method:body?'POST':'GET',headers:{'x-chesslens-token':token,...(body&&!(body instanceof FormData)?{'Content-Type':'application/json'}:{})},body:body instanceof FormData?body:body?JSON.stringify(body):undefined});if(!response.ok){let text=await response.text();try{text=JSON.parse(text).detail;}catch{}throw Error(typeof text==='string'?text:JSON.stringify(text));}return response.json();}
 let historyView=null,historySearchGeneration=0;
-function currentBranch(){return historyView||job?.result?.branches[branchIndex];}
-function replayRoot(){return historyView?.root_fen||job.result.root_fen;}
+let comparisonReplay=null,moveComparison=null,comparisonReturnStep=0,comparisonRequest=null,comparisonAbort=null,comparisonGeneration=0;
+const comparedMoves=new Map();
+function currentBranch(){return comparisonReplay||historyView||job?.result?.branches[branchIndex];}
+function replayRoot(){return comparisonReplay?.root_fen||historyView?.root_fen||job.result.root_fen;}
 function stopPlayback(){playing=false;$('play').textContent='재생';}
-function drawArrow(step){const line=$('arrow');line.style.visibility=step?'visible':'hidden';if(!step)return;const a=screenIndex(step.from_square),b=screenIndex(step.to_square);line.setAttribute('x1',(a%8+.5)*100);line.setAttribute('y1',(Math.floor(a/8)+.5)*100);line.setAttribute('x2',(b%8+.5)*100);line.setAttribute('y2',(Math.floor(b/8)+.5)*100);}
-function renderStep(){const branch=currentBranch();if(!branch)return;const step=branch.steps[stepIndex-1];renderBoard(step?step.after_fen:replayRoot());drawArrow(step);$('counter').textContent=stepIndex+' / '+branch.steps.length;$('step').textContent=historyView&&stepIndex===branch.steps.length?'기보 끝 · '+ChessLensHistory.resultText(historyView.game.result)+(step?' · '+step.text_ko:''):step?step.text_ko:historyView?'실제 경기 수순입니다. 재생 또는 →를 눌러 이어 보세요.':'재생 또는 →를 눌러 다음 수를 보세요.';$('previous').disabled=stepIndex===0;$('next').disabled=stepIndex>=branch.steps.length;$('play').disabled=!branch.steps.length;$('move-list').replaceChildren();branch.steps.forEach((s,i)=>{const button=document.createElement('button');button.textContent=(i+1)+'. '+(s.short_ko||s.text_ko);button.className=i===stepIndex-1?'selected':'';button.onclick=()=>{if(animating)return;stopPlayback();stepIndex=i+1;renderStep();};$('move-list').append(button);});}
+function placeArrow(line,step){line.style.visibility=step?'visible':'hidden';if(!step)return;const a=screenIndex(step.from_square),b=screenIndex(step.to_square);for(const [key,value] of Object.entries({x1:(a%8+.5)*100,y1:(Math.floor(a/8)+.5)*100,x2:(b%8+.5)*100,y2:(Math.floor(b/8)+.5)*100}))line.setAttribute(key,value);}
+function drawArrow(step){
+  const overview=comparisonReplay?.kind==='comparison_overview';
+  const actual=comparisonReplay?.kind==='comparison_actual';
+  placeArrow($('arrow'),overview?moveComparison.recommended.steps[0]:actual?null:step);
+  placeArrow($('actual-arrow'),overview&&!moveComparison.same_move?moveComparison.actual.steps[0]:actual?step:null);
+}
+function renderStep(){
+  const branch=currentBranch();if(!branch)return;
+  const step=branch.steps[stepIndex-1];renderBoard(step?step.after_fen:replayRoot());drawArrow(step);
+  $('counter').textContent=stepIndex+' / '+branch.steps.length;
+  const recorded=historyView&&(!comparisonReplay||comparisonReplay.kind==='comparison_actual');
+  $('step').textContent=comparisonReplay?.kind==='comparison_overview'?'두 화살표는 같은 시작판의 후보 수입니다. 아래에서 이어볼 수순을 고르세요.':
+    stepIndex===branch.steps.length&&recorded?'기보 끝 · '+ChessLensHistory.resultText(historyView.game.result)+(step?' · '+step.text_ko:''):
+    stepIndex===branch.steps.length&&comparisonReplay?'엔진 예상 수순 끝 · '+(step?.text_ko||''):
+    step?step.text_ko:comparisonReplay?'엔진이 예상한 수순입니다. 실제 경기 기록과 다를 수 있습니다.':historyView?'실제 경기 수순입니다. 재생 또는 →를 눌러 이어 보세요.':'재생 또는 →를 눌러 다음 수를 보세요.';
+  if(comparisonReplay?.kind==='comparison_actual'&&stepIndex===0)$('step').textContent='실제 경기 기록을 이어 봅니다. 재생 또는 →를 누르세요.';
+  $('previous').disabled=stepIndex===0;$('next').disabled=stepIndex>=branch.steps.length;$('play').disabled=!branch.steps.length;
+  $('move-list').replaceChildren();branch.steps.forEach((s,i)=>{
+    const button=document.createElement('button');button.textContent=(i+1)+'. '+(s.short_ko||s.text_ko);button.className=i===stepIndex-1?'selected':'';
+    if(historyView&&!comparisonReplay){const known=comparedMoves.get(historyView.game.id+':'+(historyView.startPly+i));if(known!==undefined){button.textContent+=' · '+(known?'추천과 같음':'추천과 다름');button.classList.add(known?'compared-same':'compared-different');}}
+    button.onclick=()=>{if(animating)return;stopPlayback();stepIndex=i+1;renderStep();};$('move-list').append(button);
+  });
+  updateComparisonSelection();
+}
 async function nextStep(){const branch=currentBranch();if(animating||!branch||stepIndex>=branch.steps.length)return;animating=true;const stamp=generation;const step=branch.steps[stepIndex];drawArrow(step);const box=$('board').getBoundingClientRect();const anims=[];for(const move of step.animation_moves||[step]){const from=document.querySelector('[data-square="'+move.from_square+'"] img');const a=screenIndex(move.from_square),b=screenIndex(move.to_square);if(from){from.style.zIndex='3';anims.push(from.animate([{transform:'translate(0,0)'},{transform:`translate(${(b%8-a%8)*box.width/8}px,${(Math.floor(b/8)-Math.floor(a/8))*box.height/8}px)`}],{duration:matchMedia('(prefers-reduced-motion:reduce)').matches?0:440,easing:'cubic-bezier(.2,.7,.2,1)',fill:'forwards'}).finished);}}await Promise.all(anims);if(stamp===generation){stepIndex++;renderStep();}animating=false;}
 function showResult(){clearHistory();const r=job.result;branchIndex=0;stepIndex=0;$('result').hidden=false;$('review').hidden=true;$('board-section').hidden=false;$('brief').textContent=r.brief_ko;$('focus-result').textContent=r.capture_comparison?.focus?'설명 대상: '+r.capture_comparison.focus.label_ko:'';$('turn-result').textContent=(r.root_fen.split(/\s+/)[1]==='w'?'백':'흑')+' 차례로 분석했습니다.';const hasCapture=r.branches.some(b=>b.kind==='capture');$('branch').replaceChildren();r.branches.forEach((b,i)=>{const o=document.createElement('option');o.value=i;o.textContent=b.label_ko;$('branch').append(o);});if(r.capture_comparison?.focus&&hasCapture)$('branch').value=String(r.branches.findIndex(b=>b.kind==='capture'));changeBranch();if(!r.branches.length){renderBoard(r.root_fen);$('counter').textContent='0 / 0';$('step').textContent='게임이 끝났습니다.';$('play').disabled=true;$('next').disabled=true;$('previous').disabled=true;}loadMasterGames();}
-function changeBranch(){historyView=null;document.body.classList.remove('history-active');$('history-active').hidden=true;stopPlayback();generation++;branchIndex=Number($('branch').value)||0;stepIndex=0;const b=currentBranch();if(!b){$('evaluation').textContent='종료';$('score-context').textContent='';$('capture-note').textContent=job.result.capture_comparison?.reason_ko||'이미 끝난 게임입니다.';return;}const copy=ChessLensCopy.evaluation(b,job.result.engine.viewpoint);$('brief').textContent=b.brief_ko||job.result.brief_ko;$('evaluation').textContent=copy.label;$('score-context').textContent=copy.context;$('capture-note').textContent=b.kind==='capture'?(job.result.capture_comparison?.reason_ko||'이 수로 잡는 경우를 가정한 수순입니다.'):(job.result.capture_comparison?.available?'위 목록에서 잡기 수순과 비교할 수 있습니다.':job.result.capture_comparison?.reason_ko||'이 분석에는 비교할 잡기 수순이 없습니다.');renderStep();}
+function changeBranch(){resetComparison();historyView=null;document.body.classList.remove('history-active');$('history-active').hidden=true;stopPlayback();generation++;branchIndex=Number($('branch').value)||0;stepIndex=0;const b=currentBranch();if(!b){$('evaluation').textContent='종료';$('score-context').textContent='';$('capture-note').textContent=job.result.capture_comparison?.reason_ko||'이미 끝난 게임입니다.';return;}const copy=ChessLensCopy.evaluation(b,job.result.engine.viewpoint);$('brief').textContent=b.brief_ko||job.result.brief_ko;$('evaluation').textContent=copy.label;$('score-context').textContent=copy.context;$('capture-note').textContent=b.kind==='capture'?(job.result.capture_comparison?.reason_ko||'이 수로 잡는 경우를 가정한 수순입니다.'):(job.result.capture_comparison?.available?'위 목록에서 잡기 수순과 비교할 수 있습니다.':job.result.capture_comparison?.reason_ko||'이 분석에는 비교할 잡기 수순이 없습니다.');renderStep();}
 function hasOverlays(){return (job?.recognition?.review_squares||[]).some(s=>s.reason==='colored_overlay');}
 function resetConfirmation(){ $('confirm').checked=false;$('confirm-overlays').checked=false; }
 function updateReviewGate(){
@@ -112,11 +137,11 @@ $('capture').onchange=()=>{resetConfirmation();updateReviewGate();};
 
 $('play').onclick=async()=>{if(playing){stopPlayback();return;}const b=currentBranch();if(!b)return;if(stepIndex>=b.steps.length){stepIndex=0;renderStep();}playing=true;$('play').textContent='멈춤';const stamp=generation;while(playing&&stamp===generation&&stepIndex<b.steps.length){await nextStep();await new Promise(r=>setTimeout(r,1050));}if(stamp===generation)stopPlayback();};
 $('analyse').onclick=async()=>{try{$('error').hidden=true;if(!reviewTurn||!reviewFocus||capturePreviewPending||!capturePreviewValid)throw Error('차례를 선택하고 잡기 확인이 끝난 뒤 분석해주세요.');$('analyse').disabled=true;await api('/api/explanations/'+job.job_id+'/answers',{revision:job.revision,question_id:'confirm-position',fen:$('fen').value.trim(),confirmed_history:$('confirm').checked,confirmed_overlays:$('confirm-overlays').checked,before_fen:$('before-fen').value.trim(),target_uci:$('target').value.trim(),capture_uci:$('capture').value,focus_square:reviewFocus==='*'?'':reviewFocus});await refresh();}catch(e){error(e);updateReviewGate();}};
-window.addEventListener('pagehide',()=>{historySearchGeneration++;stopPlayback();if(poll)clearInterval(poll);});init();
+window.addEventListener('pagehide',()=>{resetComparison();historySearchGeneration++;stopPlayback();if(poll)clearInterval(poll);});init();
 
 // Historical game playback never replaces the job's verified engine result.
 function clearHistory(){
-  historySearchGeneration++;historyView=null;
+  historySearchGeneration++;resetComparison();comparedMoves.clear();historyView=null;
   document.body.classList.remove('history-active');
   $('history-active').hidden=true;$('history').hidden=true;
   $('history-games').replaceChildren();$('history-retry').disabled=false;
@@ -132,7 +157,7 @@ function returnToEngine(){
 }
 function watchGame(game,fromStart,matchPly){
   if(animating)return;
-  stopPlayback();generation++;
+  resetComparison();stopPlayback();generation++;
   historyView=ChessLensHistory.select(game,fromStart,matchPly);stepIndex=0;
   document.body.classList.add('history-active');$('history-active').hidden=false;
   $('history-title').textContent=(game.title_ko||game.white.name+' — '+game.black.name)+' · 실제 경기';
@@ -202,3 +227,46 @@ async function configureMasterConnection(action){
 $('master-connect').onclick=()=>configureMasterConnection('connect');
 $('master-test').onclick=()=>configureMasterConnection('test');
 $('master-disconnect').onclick=()=>configureMasterConnection('disconnect');
+
+function resetComparison(){
+  comparisonGeneration++;comparisonAbort?.abort();comparisonAbort=null;comparisonRequest=null;
+  comparisonReplay=null;moveComparison=null;$('move-comparison').hidden=true;$('comparison-status').textContent='';placeArrow($('actual-arrow'),null);
+}
+function updateComparisonSelection(){
+  const ply=ChessLensComparison.selectedPly(historyView,stepIndex);
+  if(comparisonRequest&&!comparisonReplay&&!ChessLensComparison.current(comparisonRequest,historyView,stepIndex,job?.job_id))resetComparison();
+  $('compare-move').disabled=ply===null||!!comparisonReplay||!!comparisonRequest;
+  $('comparison-selection').textContent=comparisonReplay?'선택한 실제 수와 엔진 추천 비교 중':ply===null?'비교할 다음 수가 없는 경기 종료 장면입니다.':'비교할 수: '+ChessLensHistory.positionLabel(historyView.game,ply)+' · '+historyView.game.steps[ply].text_ko;
+}
+async function compareSelectedMove(){
+  if(animating||!historyView||comparisonReplay)return;
+  stopPlayback();const ply=ChessLensComparison.selectedPly(historyView,stepIndex);if(ply===null)return;
+  resetComparison();const stamp=comparisonGeneration,request={jobId:job.job_id,gameId:historyView.game.id,ply};
+  comparisonRequest=request;comparisonAbort=new AbortController();updateComparisonSelection();$('comparison-status').textContent='같은 시작판에서 실제 수와 추천 수를 비교하고 있습니다.';
+  try{
+    const data=await api('/api/explanations/'+request.jobId+'/compare-move',{game_id:request.gameId,ply},{signal:comparisonAbort.signal});
+    if(stamp!==comparisonGeneration||!ChessLensComparison.current(request,historyView,stepIndex,job?.job_id))return;
+    comparisonRequest=null;comparisonAbort=null;moveComparison=data;comparisonReturnStep=stepIndex;
+    comparedMoves.set(request.gameId+':'+ply,data.same_move);while(comparedMoves.size>64)comparedMoves.delete(comparedMoves.keys().next().value);
+    $('move-comparison').hidden=false;$('comparison-status').textContent='비교 완료';
+    $('comparison-verdict').textContent=data.same_move?'이번 추천과 같은 수':'이번 추천과 다른 수';
+    $('comparison-position').textContent=ChessLensHistory.positionLabel(historyView.game,ply)+' · 두 수 모두 이 판에서 평가 · 백 기준 점수';
+    $('actual-label').textContent=data.actual.steps[0].text_ko;$('recommended-label').textContent=data.recommended.steps[0].text_ko;
+    $('actual-score').textContent=ChessLensComparison.score(data.actual);$('recommended-score').textContent=ChessLensComparison.score(data.recommended);
+    $('comparison-difference').textContent=data.difference_ko;$('comparison-note').textContent=data.note_ko;
+    showComparisonLine('overview');
+  }catch(e){if(stamp===comparisonGeneration&&e.name!=='AbortError')$('comparison-status').textContent='비교하지 못했습니다. '+e.message;}
+  finally{if(stamp===comparisonGeneration){comparisonRequest=null;comparisonAbort=null;updateComparisonSelection();}}
+}
+function showComparisonLine(mode){
+  if(animating||!moveComparison||!historyView)return;
+  stopPlayback();generation++;stepIndex=0;
+  const steps=mode==='actual'?historyView.game.steps.slice(moveComparison.ply):mode==='engine'?moveComparison.recommended.steps:[];
+  comparisonReplay={kind:'comparison_'+mode,root_fen:moveComparison.root_fen,steps};
+  $('comparison-mode').textContent=mode==='actual'?'현재 재생: 실제 경기의 기록된 후속 수순':mode==='engine'?'현재 재생: 엔진 추천 이후 예상 수순 (최대 12번 이동)':'현재 화면: 같은 시작판 · '+(moveComparison.same_move?'실제 수와 추천이 같아 청록 화살표 하나로 표시합니다.':'주황은 실제 수, 청록은 엔진 추천입니다.');
+  for(const [id,value] of [['comparison-actual','actual'],['comparison-engine','engine'],['comparison-overview','overview']])$(id).setAttribute('aria-pressed',String(mode===value));
+  renderStep();
+}
+$('compare-move').onclick=compareSelectedMove;
+$('comparison-actual').onclick=()=>showComparisonLine('actual');$('comparison-engine').onclick=()=>showComparisonLine('engine');$('comparison-overview').onclick=()=>showComparisonLine('overview');
+$('comparison-close').onclick=()=>{if(animating)return;stopPlayback();generation++;const saved=comparisonReturnStep;resetComparison();stepIndex=saved;renderStep();};

@@ -120,3 +120,29 @@ range. Earlier historical games are covered by the selected offline catalog.
 
 Checks: `python -m pytest tests -q` and
 `node --test tests/test_history_replay.cjs tests/test_external_source.cjs tests/test_explain_copy.cjs tests/test_popup.cjs`.
+
+## Actual move versus engine recommendation
+
+In historical playback, select a move and click **이 수와 엔진 추천 비교**.
+The overview shows the recorded move in orange and Stockfish's recommendation
+in teal on the same starting board. Identical moves use one arrow. Both scores
+use White's perspective; the difference is explained from the mover's side.
+Mate scores and contradictory short searches are not converted into pawn loss.
+A different recommendation alone is not labelled a mistake.
+
+**실제 경기 이어보기** plays the original record. **엔진 추천 이어보기** plays
+a hypothetical engine continuation (up to 12 plies). Close comparison to restore
+the selected historical position, or return to the original engine analysis.
+Previously compared moves receive same/different markers in the move list.
+
+Authenticated POST `/api/explanations/{job_id}/compare-move` takes only `game_id`
+and zero-based `ply`. The server resolves that game against the job's confirmed
+position and trusted catalog or position-associated remote cache. Refresh the
+list if a remote game has left the cache. The shared single worker serializes
+engine work: Threads 1, Hash 64 MiB, 700 ms per search, at most two searches.
+One comparison is admitted at a time, including after a request timeout until
+the worker finishes. Results use a 64-entry cache. Cancelled sessions cannot
+publish results; browser step/game/session changes discard late responses.
+
+Additional checks: `python -m pytest tests/test_move_comparison.py -q` and
+`node --test tests/test_history_comparison.cjs`.

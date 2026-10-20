@@ -27,3 +27,5 @@
 
 #master-connection{border:1px solid #79cfdb25;border-radius:10px;padding:10px 13px;margin:12px 0}
 #master-connection .history-actions button{font-size:12px}#master-connection-status{margin-bottom:0}
+
+#actual-arrow{visibility:hidden}.comparison-cards{display:grid;grid-template-columns:1fr 1fr;gap:12px}.comparison-cards article{padding:13px;border:1px solid #79cfdb35;border-radius:12px;min-width:0}.comparison-cards h3{font-size:13px;margin:0 0 12px}.comparison-cards p{font-size:13px;line-height:1.8;overflow-wrap:anywhere}.comparison-cards button{font-size:12px;white-space:normal;width:100%}.comparison-actual h3{color:#f7b66b}.comparison-engine h3{color:#4ce9d1}#comparison-difference{font-size:13px;line-height:1.8}#compare-move{border-color:#f7b66b66}#move-list .compared-different{border-color:#f7b66b88}#move-list .compared-same{border-color:#4ce9d166}@media(max-width:430px){.comparison-cards{grid-template-columns:1fr}}

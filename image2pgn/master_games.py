@@ -115,6 +115,23 @@ class MasterGames:
         self.credentials = credentials or TokenStore()
         self.connection_verified = False
 
+    def resolve_game(self, fen, game_id):
+        """Only allow games associated with the job's confirmed position."""
+        key = position_key(checked_board(fen))
+        for game in self.catalog:
+            if game['id'] == game_id and match_game(game, key):
+                return game
+        if not self.lock.acquire(blocking=False):
+            raise ValueError('경기 검색 중입니다. 잠시 뒤 다시 비교하세요.')
+        try:
+            cached = self.cache.get(key)
+            for game in cached[1]['games'] if cached else []:
+                if game['id'] == game_id:
+                    return game
+        finally:
+            self.lock.release()
+        raise ValueError('이 판에서 확인한 경기만 비교할 수 있습니다. 경기 목록을 다시 검색하세요.')
+
     def connection_status(self):
         return {**self.credentials.status(), 'verified': self.connection_verified}
 

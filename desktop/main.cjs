@@ -1,7 +1,8 @@
-const {app,BrowserWindow,ipcMain,screen}=require('electron');
+const {app,BrowserWindow,ipcMain,screen,shell}=require('electron');
 const path=require('node:path');
 const fs=require('node:fs');
 const {popupBounds}=require('./window-placement.cjs');
+const {isSourceURL}=require('./external-source.cjs');
 const port=Number(process.env.CHESSLENS_PORT||8771);
 if(!Number.isInteger(port)||port<1024||port>65535)throw Error('Invalid local port');
 const origin=`http://127.0.0.1:${port}`;
@@ -21,7 +22,7 @@ app.whenReady().then(async()=>{
   const bounds=popupBounds(area,source);
   win=new BrowserWindow({...bounds,title:'ChessLens · 수순 설명',frame:false,transparent:true,backgroundColor:'#00000000',alwaysOnTop:true,show:false,resizable:true,minWidth:Math.min(330,area.width),minHeight:Math.min(480,area.height),webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true,webSecurity:true}});
   win.setMenu(null);
-  win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
+  win.webContents.setWindowOpenHandler(({url})=>{if(isSourceURL(url))shell.openExternal(url).catch(()=>{});return {action:'deny'};});
   win.webContents.on('will-redirect',(event,url)=>{if(new URL(url).origin!==origin)event.preventDefault();});
   win.webContents.session.webRequest.onBeforeRequest((details,callback)=>{let allowed=false;try{const url=new URL(details.url);allowed=url.origin===origin||['data:','blob:'].includes(url.protocol);}catch{}callback({cancel:!allowed});});
   win.webContents.on('will-navigate',(event,url)=>{const u=new URL(url);if(u.origin!==origin||u.pathname!=='/explain')event.preventDefault();});

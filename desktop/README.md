@@ -55,3 +55,43 @@ Checks: `python -m pytest tests -q`, `node --test tests/test_popup.cjs`.
 public-fixture replay/flip/close diagnostic. It expects the queen-sacrifice mate
 fixture from `tests/test_explanations.py`. Screenshots and checks are stored
 under `.tmp/popup-smoke/` or `CHESSLENS_SMOKE_DIR`.
+
+
+## Famous and high-rated games
+
+After a confirmed position reaches `ready`, the result page searches the bundled
+historical catalog immediately, then the Lichess Masters database. The catalog
+currently contains Fischer–Benko (1963) and Donald Byrne–Fischer (1956), with
+sources in `image2pgn/data/famous_games.json`. No historical Elo is fabricated.
+Online results require **both** recorded player ratings to be at least 2400;
+ordinary Lichess player games are never queried.
+
+`GET /api/explanations/{job_id}/master-games` returns catalog matches. Add
+`?remote=true` for the Masters lookup under the same session-token boundary.
+Matches require piece placement, side to move, castling rights and legal en
+passant rights; move counters are ignored. Every candidate PGN is legally
+replayed before it is displayed. A matching position identifies candidate games,
+not proof that the screenshot came from one particular game.
+
+Use **이 장면부터** or **처음부터** to replay the recorded moves, and
+**엔진 분석으로 돌아가기** to restore the engine branch. Recorded game playback
+hides the engine evaluation. Its final result comes from the PGN; an engine
+continuation after resignation is not presented as a played move.
+
+Outbound requests use only `https://explorer.lichess.org/masters`, one at a time,
+with 5-second network-operation timeouts, a 128 KiB response cap, at most three
+PGN downloads from 15 candidate references, and a 32-entry five-minute cache.
+HTTP 429 enforces a shared 60-second pause. Images are never sent to this service.
+An optional `CHESSLENS_LICHESS_TOKEN` environment variable is read only by the
+server for bearer authentication; configure it locally before starting the
+service, never paste it into chat or a browser form. Tokens are not returned to
+the browser or recorded in application responses.
+
+Live validation on 2026-10-20 received HTTP 401 from both published Masters hosts.
+The cause is not established; token support does not establish that a token will
+resolve this host response. Connection/authentication errors remain visible and
+the catalog and engine continue working. Full external search needs live
+validation when access is available. No fallback to ordinary games is made.
+
+Checks: `python -m pytest tests -q` and
+`node --test tests/test_history_replay.cjs tests/test_external_source.cjs tests/test_explain_copy.cjs tests/test_popup.cjs`.

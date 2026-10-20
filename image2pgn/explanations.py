@@ -74,14 +74,14 @@ def readable_action(action):
     return action + '.'
 
 
-def replay_steps(root, moves, viewpoint, branch_id):
+def replay_steps(root, moves, viewpoint, branch_id, max_plies=12):
     board = root.copy()
     steps = []
     material = lambda b: sum((1 if p.color == viewpoint else -1) * {1: 1, 2: 3, 3: 3, 4: 5, 5: 9, 6: 0}[p.piece_type] for p in b.piece_map().values())
     baseline = material(board)
-    for i, move in enumerate(moves[:12]):
+    for i, move in enumerate(moves[:max_plies]):
         if move not in board.legal_moves:
-            raise ValueError("엔진 수순에 합법적이지 않은 수가 있습니다.")
+            raise ValueError("수순에 합법적이지 않은 수가 있습니다.")
         san = board.san(move)
         action, short = move_words(board, move)
         captured_square = (move.to_square + (-8 if board.turn else 8)) if board.is_en_passant(move) else move.to_square

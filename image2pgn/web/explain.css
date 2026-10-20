@@ -14,3 +14,13 @@
 .brand-title{font-family:"Segoe UI","Pretendard",sans-serif;font-size:26px;font-weight:800;letter-spacing:-.04em;line-height:1.2;color:#f3fafc;margin:0}@media(max-width:430px){.brand-title{font-size:24px}}
 
 #brief{font-weight:450;line-height:1.85;letter-spacing:-.02em;word-break:keep-all;overflow-wrap:anywhere}.step{line-height:1.85;letter-spacing:-.015em}button{font-weight:550}label{font-size:13px}.hint{font-size:12px}#refocus,#new{font-size:13px}
+
+.history-card{border:1px solid #79cfdb35;border-radius:12px;padding:15px;margin:12px 0;background:#ffffff04}
+.history-card h3{font-size:15px;font-weight:600;line-height:1.6;margin:12px 0 6px;overflow-wrap:anywhere}
+.history-card p{font-size:12px;line-height:1.85;word-break:keep-all;overflow-wrap:anywhere}
+.history-actions{display:flex;gap:8px;flex-wrap:wrap}.history-actions button{font-size:12px}
+.history-sources{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+.history-active #result .result-head,.history-active #score-context,.history-active #turn-result,.history-active #focus-result,.history-active #brief,.history-active #capture-note,.history-active #refocus{display:none}
+#history-active{border:1px solid #e3c58a55;border-radius:12px;padding:14px;background:#e3c58a08}
+#history-active h2{margin:8px 0}#history-active .badge{color:#f2d392}#history-engine,#history-retry{font-size:12px}
+#move-list{max-height:230px;overflow-y:auto}

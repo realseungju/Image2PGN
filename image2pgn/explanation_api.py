@@ -20,6 +20,7 @@ from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 from .explanations import AnalysisCancelled, capture_options, explain
+from .master_games import MasterGames
 
 
 class Answers(BaseModel):
@@ -174,6 +175,7 @@ class JobStore:
 def install_explanation_api(app, recognize_payload, web_dir, popup=None, analyser=explain):
     store = JobStore(recognize_payload, app.state.config, popup, analyser)
     app.state.explanations = store
+    app.state.master_games = MasterGames()
 
     @app.middleware('http')
     async def local_security(request: Request, call_next):
@@ -266,6 +268,13 @@ def install_explanation_api(app, recognize_payload, web_dir, popup=None, analyse
     @app.get('/api/explanations/{job_id}')
     def get_job(job_id: str):
         return store.snapshot(job_id)
+
+    @app.get('/api/explanations/{job_id}/master-games')
+    def master_games(job_id: str, remote: bool = False):
+        job = store.snapshot(job_id)
+        if job['status'] != 'ready' or not (job.get('result') or {}).get('fen'):
+            raise HTTPException(409, '판과 게임 정보를 확인하고 분석을 마친 뒤 검색하세요.')
+        return app.state.master_games.lookup(job['result']['fen'], remote=remote)
 
     @app.post('/api/explanations/{job_id}/answers')
     def answers(job_id: str, answer: Answers):

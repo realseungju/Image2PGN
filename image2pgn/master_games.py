@@ -4,7 +4,6 @@ from __future__ import annotations
 from collections import OrderedDict
 import io
 import json
-import os
 from pathlib import Path
 import re
 import threading
@@ -15,6 +14,7 @@ import chess.pgn
 import httpx
 
 from .explanations import checked_board, replay_steps
+from .lichess_credentials import TokenStore, valid_token
 
 MASTERS_URL = 'https://explorer.lichess.org/masters'
 MIN_RATING = 2400
@@ -101,7 +101,7 @@ class RemoteFailure(Exception):
 
 
 class MasterGames:
-    def __init__(self, *, fetch=None, clock=time.monotonic, catalog_path=None):
+    def __init__(self, *, fetch=None, clock=time.monotonic, catalog_path=None, credentials=None):
         path = catalog_path or Path(__file__).with_name('data') / 'famous_games.json'
         catalog = json.loads(path.read_text(encoding='utf-8'))
         self.catalog = [parse_game(item['pgn'], item['id'], curated=item) for item in catalog]
@@ -112,12 +112,51 @@ class MasterGames:
         self.blocked_until = 0
         self.blocked_status = 'unavailable'
         self.blocked_message = ''
+        self.credentials = credentials or TokenStore()
+        self.connection_verified = False
 
-    def _fetch(self, url):
+    def connection_status(self):
+        return {**self.credentials.status(), 'verified': self.connection_verified}
+
+    def configure(self, action, token='', remember=False):
+        if not self.lock.acquire(blocking=False):
+            raise RemoteFailure('busy', '검색이 진행 중입니다. 잠시 뒤 다시 연결하세요.')
+        try:
+            if action == 'disconnect':
+                self.credentials.clear()
+                self.connection_verified = False
+                self.cache.clear()
+                return self.connection_status()
+            if self.blocked_status == 'rate_limited' and self.clock() < self.blocked_until:
+                raise RemoteFailure('rate_limited', '마스터 DB 요청 제한입니다. 1분 뒤 다시 연결하세요.')
+            candidate = token if action == 'connect' else self.credentials.token()
+            if not valid_token(candidate):
+                raise ValueError('Lichess에서 발급한 토큰을 입력하세요. 권한은 선택하지 않아도 됩니다.')
+            try:
+                data = json.loads(self._fetch(MASTERS_URL + '?play=e2e4&topGames=1&moves=0', token=candidate))
+                if not isinstance(data, dict) or not isinstance(data.get('topGames'), list):
+                    raise ValueError('마스터 DB 응답을 확인하지 못했습니다.')
+            except RemoteFailure as exc:
+                if exc.status == 'rate_limited':
+                    self.blocked_status = exc.status
+                    self.blocked_until = self.clock() + 60
+                    self.blocked_message = exc.message
+                raise
+            if action == 'connect':
+                self.credentials.set(candidate, remember=remember)
+            self.connection_verified = True
+            self.cache.clear()
+            self.blocked_until = 0
+            return self.connection_status()
+        finally:
+            self.lock.release()
+
+    def _fetch(self, url, token=None):
         headers = {'Accept': 'application/json, application/x-chess-pgn', 'User-Agent': 'ChessLens/1.0'}
-        token = os.environ.get('CHESSLENS_LICHESS_TOKEN', '').strip()
-        if token:
-            headers['Authorization'] = 'Bearer ' + token
+        token = self.credentials.token() if token is None else token
+        if not token:
+            raise RemoteFailure('auth_required', '외부 마스터 DB 연결이 필요합니다. 위의 마스터 DB 연결에서 Lichess 토큰을 등록하세요.')
+        headers['Authorization'] = 'Bearer ' + token
         try:
             # Fixed origin, no redirects: credentials never follow a remote Location.
             with httpx.Client(timeout=5, follow_redirects=False) as client:
@@ -125,9 +164,9 @@ class MasterGames:
                     if response.status_code == 429:
                         raise RemoteFailure('rate_limited', '마스터 DB 요청 제한입니다. 1분 뒤 다시 검색하세요.')
                     if response.status_code in (401, 403):
-                        raise RemoteFailure('unavailable', '마스터 DB 접근이 거절됐습니다. 서버의 Lichess 인증·연결 설정을 확인하세요.')
+                        raise RemoteFailure('auth_required', 'Lichess 토큰이 없거나 만료·폐기됐습니다. 마스터 DB 연결에서 새 토큰으로 연결하세요.')
                     if response.status_code != 200:
-                        raise RemoteFailure('unavailable', '마스터 DB에 연결하지 못했습니다. 잠시 뒤 다시 검색하세요.')
+                        raise RemoteFailure('unavailable', f'마스터 DB 요청 실패 (HTTP {response.status_code}). 잠시 뒤 다시 검색하세요.')
                     data = bytearray()
                     for chunk in response.iter_bytes():
                         data.extend(chunk)
@@ -139,7 +178,7 @@ class MasterGames:
 
     def _remote(self, board):
         from urllib.parse import urlencode
-        url = MASTERS_URL + '?' + urlencode(dict(fen=position_key(board) + ' 0 1', since=0, topGames=15, moves=0))
+        url = MASTERS_URL + '?' + urlencode(dict(fen=position_key(board) + ' 0 1', topGames=15, moves=0))
         data = json.loads(self.fetch(url))
         if not isinstance(data, dict) or not isinstance(data.get('topGames'), list):
             raise ValueError('Invalid explorer response')
@@ -189,7 +228,10 @@ class MasterGames:
             else:
                 try:
                     remote_result = self._remote(board)
+                    self.connection_verified = True
                 except RemoteFailure as exc:
+                    if exc.status == 'auth_required':
+                        self.connection_verified = False
                     self.blocked_until = self.clock() + 60
                     self.blocked_status, self.blocked_message = exc.status, exc.message
                     remote_result = dict(games=[], remote_status=exc.status, message_ko=exc.message)

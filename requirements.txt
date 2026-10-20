@@ -22,3 +22,4 @@ httpx>=0.27
 # Bounded image header validation for explanation uploads.
 Pillow>=10.0
 # Historical master-game search reuses chess, httpx and the Python standard library.
+# Local Lichess credentials use standard-library ctypes and Windows DPAPI; no new dependency.

@@ -100,7 +100,7 @@ async function refresh(){if(!job)return;const id=job.job_id,stamp=generation;try
 async function start(){try{$('error').hidden=true;const form=new FormData();form.set('request_id',crypto.randomUUID());form.set('question',$('question').value);const image=$('image').files[0];if(image)form.set('image',image);if($('initial-fen').value.trim()){form.set('fen',$('initial-fen').value.trim());form.set('confirmed_history',String($('initial-confirm').checked));}await attach(await api('/api/explanations',form));}catch(e){error(e);}}
 async function attach(value){clearHistory();stopPlayback();generation++;job=value;renderedRevision=-1;$('start').hidden=true;if(poll)clearInterval(poll);await refresh();poll=setInterval(refresh,700);}
 async function closeSession(){clearHistory();stopPlayback();generation++;if(poll)clearInterval(poll);if(job){try{await api('/api/explanations/'+job.job_id+'/cancel',{});}catch(e){error(e);}}if(window.chesslensShell)window.chesslensShell.close();else{$('status').textContent='분석이 닫혔습니다.';$('start').hidden=false;$('review').hidden=true;$('result').hidden=true;$('board-section').hidden=true;job=null;}}
-async function init(){try{token=(await api('/api/explanations/session')).token;const id=params.get('job');if(id)await attach(await api('/api/explanations/'+id));const handoff=sessionStorage.getItem('chesslens-confirmed-fen');if(handoff&&!id){sessionStorage.removeItem('chesslens-confirmed-fen');$('initial-fen').value=handoff;$('initial-confirm').checked=true;}}catch(e){error(e);}if(params.get('shell')==='1'&&window.chesslensShell)document.body.classList.add('shell');}
+async function init(){try{token=(await api('/api/explanations/session')).token;await refreshMasterConnection();const id=params.get('job');if(id)await attach(await api('/api/explanations/'+id));const handoff=sessionStorage.getItem('chesslens-confirmed-fen');if(handoff&&!id){sessionStorage.removeItem('chesslens-confirmed-fen');$('initial-fen').value=handoff;$('initial-confirm').checked=true;}}catch(e){error(e);}if(params.get('shell')==='1'&&window.chesslensShell)document.body.classList.add('shell');}
 $('submit').onclick=start;$('close').onclick=closeSession;$('new').onclick=closeSession;$('branch').onchange=changeBranch;$('previous').onclick=()=>{if(animating)return;stopPlayback();stepIndex=Math.max(0,stepIndex-1);renderStep();};$('next').onclick=()=>{stopPlayback();nextStep();};$('flip').onclick=()=>{if(animating)return;stopPlayback();flipped=!flipped;if(job?.status==='needs_input')renderBoard($('fen').value,true);else if(!historyView&&job?.result&&!job.result.branches.length)renderBoard(job.result.root_fen);else renderStep();};$('fen').onchange=()=>{try{resetConfirmation();const side=$('fen').value.trim().split(/\s+/)[1];reviewTurn=['w','b'].includes(side)?side:'';syncTurnButtons();renderBoard($('fen').value,true);refreshCaptures();}catch(e){error(e);}};
 $('turn-white').onclick=()=>chooseTurn('w');$('turn-black').onclick=()=>chooseTurn('b');
 $('confirm').onchange=updateReviewGate;$('confirm-overlays').onchange=updateReviewGate;
@@ -180,3 +180,25 @@ async function loadMasterGames(){
   finally{if(fresh())$('history-retry').disabled=false;}
 }
 $('history-retry').onclick=loadMasterGames;$('history-engine').onclick=returnToEngine;
+
+function renderMasterConnection(state){
+  $('master-connection-label').textContent=state.verified?'연결됨':state.configured?'연결 확인 필요':'미연결';
+  $('master-remember').disabled=!state.persistent_supported;
+  $('master-test').disabled=!state.configured;$('master-disconnect').disabled=!state.configured&&!state.storage_error;
+  $('master-connection-status').textContent=state.storage_error?'저장한 연결 정보를 읽지 못했습니다. 새 토큰으로 연결하세요.':state.verified?'마스터 DB 연결을 확인했습니다. '+(state.source==='encrypted'?'이 Windows 계정에 암호화해 저장했습니다.':state.source==='environment'?'서버 환경변수의 토큰을 사용합니다.':'서비스가 실행되는 동안만 연결됩니다.') :state.configured?'토큰이 설정되어 있습니다. 연결 확인을 누르세요.':'연결하지 않아도 내장 유명 경기와 엔진 분석을 사용할 수 있습니다.';
+}
+async function refreshMasterConnection(){try{renderMasterConnection(await api('/api/explanations/master-connection'));}catch{$('master-connection-label').textContent='확인 실패';}}
+async function configureMasterConnection(action){
+  const secret=$('master-token').value.trim();$('master-token').value='';
+  if(action==='connect'&&!secret){$('master-connection-status').textContent='먼저 Lichess 토큰을 입력하세요.';return;}
+  for(const id of ['master-connect','master-test','master-disconnect'])$(id).disabled=true;
+  $('master-connection-status').textContent='연결을 확인하고 있습니다.';
+  try{
+    const state=await api('/api/explanations/master-connection',{action,...(action==='connect'?{token:secret,remember:$('master-remember').checked}:{})});
+    renderMasterConnection(state);if(job?.status==='ready')loadMasterGames();
+  }catch(e){$('master-connection-status').textContent=e.message;}
+  finally{$('master-connect').disabled=false;const state=await api('/api/explanations/master-connection').catch(()=>null);if(state){$('master-test').disabled=!state.configured;$('master-disconnect').disabled=!state.configured&&!state.storage_error;}}
+}
+$('master-connect').onclick=()=>configureMasterConnection('connect');
+$('master-test').onclick=()=>configureMasterConnection('test');
+$('master-disconnect').onclick=()=>configureMasterConnection('disconnect');

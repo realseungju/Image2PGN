@@ -87,7 +87,7 @@ def test_remote_masters_only_filters_before_pgn_and_caches():
     result = finder.lookup(AFTER_RF6,remote=True)
     assert result['remote_status'] == 'available' and len(result['games']) == 1  # deduplicated against catalog
     assert len(calls) == 2 and all(u.startswith('https://explorer.lichess.org/masters') for u in calls)
-    assert 'since=0' in calls[0]
+    assert 'since=' not in calls[0]  # Use the API's valid default range, not invalid year zero.
     assert finder.lookup(AFTER_RF6,remote=True)['games'] == result['games'] and len(calls) == 2
 
 
@@ -175,11 +175,11 @@ def test_network_auth_timeout_size_and_no_redirects(monkeypatch):
         def __exit__(self,*args):pass
         def stream(self,*args,**kwargs):captured.update(kwargs);return Response()
     monkeypatch.setattr(module.httpx,'Client',Client)
-    monkeypatch.setenv('CHESSLENS_LICHESS_TOKEN','test-secret')
+    monkeypatch.setenv('CHESSLENS_LICHESS_TOKEN','test_secret')
     with pytest.raises(RemoteFailure) as exc:service()._fetch(module.MASTERS_URL)
-    assert exc.value.status == 'unavailable' and 'test-secret' not in str(exc.value)
+    assert exc.value.status == 'auth_required' and 'test_secret' not in str(exc.value)
     assert captured['follow_redirects'] is False and captured['timeout']==5
-    assert captured['headers']['Authorization']=='Bearer test-secret'
+    assert captured['headers']['Authorization']=='Bearer test_secret'
     Response.status_code=429
     with pytest.raises(RemoteFailure) as exc:service()._fetch(module.MASTERS_URL)
     assert exc.value.status=='rate_limited'

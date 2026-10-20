@@ -4,19 +4,385 @@
     "title_ko": "피셔–벤코: 룩을 내놓은 한 수",
     "note_ko": "1963년 미국 챔피언십의 경기입니다. 실제 기보는 21.Ne2에서 백 승리로 끝납니다. 엔진이 보여주는 이후 메이트 수순은 실제 진행과 다릅니다.",
     "sources": [
-      {"label": "기보 출처 · Lichess 체스 강의", "url": "https://lichess.org/ps/video/9lkZT-lxQxY"},
-      {"label": "경기 소개 · FIDE", "url": "https://artsandculture.google.com/story/sAWxxLgTadTeQw"}
+      {
+        "label": "기보 출처 · Lichess 체스 강의",
+        "url": "https://lichess.org/ps/video/9lkZT-lxQxY"
+      },
+      {
+        "label": "경기 소개 · FIDE",
+        "url": "https://artsandculture.google.com/story/sAWxxLgTadTeQw"
+      },
+      {
+        "label": "기보 교차 확인 · PGN Mentor",
+        "url": "https://www.pgnmentor.com/players/Fischer.zip"
+      }
     ],
-    "pgn": "[Event \"US Championship\"]\n[Site \"New York\"]\n[Date \"1963.12.30\"]\n[Round \"10\"]\n[White \"Robert James Fischer\"]\n[Black \"Pal Benko\"]\n[Result \"1-0\"]\n\n1. e4 g6 2. d4 Bg7 3. Nc3 d6 4. f4 Nf6 5. Nf3 O-O 6. Bd3 Bg4 7. h3 Bxf3 8. Qxf3 Nc6 9. Be3 e5 10. dxe5 dxe5 11. f5 gxf5 12. Qxf5 Nd4 13. Qf2 Ne8 14. O-O Nd6 15. Qg3 Kh8 16. Qg4 c6 17. Qh5 Qe8 18. Bxd4 exd4 19. Rf6 Kg8 20. e5 h6 21. Ne2 1-0"
+    "pgn": "[Event \"US Championship\"]\n[Site \"New York\"]\n[Date \"1963.12.30\"]\n[Round \"10\"]\n[White \"Robert James Fischer\"]\n[Black \"Pal Benko\"]\n[Result \"1-0\"]\n\n1. e4 g6 2. d4 Bg7 3. Nc3 d6 4. f4 Nf6 5. Nf3 O-O 6. Bd3 Bg4 7. h3 Bxf3 8. Qxf3 Nc6 9. Be3 e5 10. dxe5 dxe5 11. f5 gxf5 12. Qxf5 Nd4 13. Qf2 Ne8 14. O-O Nd6 15. Qg3 Kh8 16. Qg4 c6 17. Qh5 Qe8 18. Bxd4 exd4 19. Rf6 Kg8 20. e5 h6 21. Ne2 1-0",
+    "provenance": {
+      "provider": "PGN Mentor cross-check",
+      "retrieved": "2026-10-20",
+      "archive_sha256": "c07174dd3a66116ca74ac3b466e771a53de95068bcafa0a453f6df65d36e0b2b",
+      "pgn_sha256": "1d8afba5a95ed42588e3714af173f8dcf2cd56e06c9814373aa773064e53edf3",
+      "selection": {
+        "Event": "USA-ch",
+        "Site": "New York",
+        "Date": "1963.??.??",
+        "Round": "10",
+        "White": "Fischer, Robert James",
+        "Black": "Benko, Pal C",
+        "Result": "1-0",
+        "WhiteElo": "",
+        "BlackElo": "",
+        "ECO": "B09"
+      },
+      "score_sha256": "f2aa61ba2e886b6c3a819767b145866c0cbe612a70d2fca635fa49bbea9dc7fb",
+      "plies": 41
+    }
   },
   {
     "id": "byrne-fischer-1956",
     "title_ko": "세기의 대국: 번–피셔",
     "note_ko": "13세 피셔가 퀸을 내주는 전개로 알려진 1956년 경기입니다. 마지막 41...Rc2 체크메이트까지 실제 기보를 재생합니다.",
     "sources": [
-      {"label": "기보 출처 · 서호주 체스협회", "url": "https://www.cawa.org.au/newsletter/CAWANewsletterFeb2008.pdf"},
-      {"label": "경기 강의 · Lichess", "url": "https://lichess.org/fo/video/WLUDzDL4HZo"}
+      {
+        "label": "기보 출처 · 서호주 체스협회",
+        "url": "https://www.cawa.org.au/newsletter/CAWANewsletterFeb2008.pdf"
+      },
+      {
+        "label": "경기 강의 · Lichess",
+        "url": "https://lichess.org/fo/video/WLUDzDL4HZo"
+      },
+      {
+        "label": "기보 교차 확인 · PGN Mentor",
+        "url": "https://www.pgnmentor.com/players/Fischer.zip"
+      }
     ],
-    "pgn": "[Event \"Rosenwald Memorial\"]\n[Site \"New York\"]\n[Date \"1956.10.17\"]\n[White \"Donald Byrne\"]\n[Black \"Robert James Fischer\"]\n[Result \"0-1\"]\n\n1. Nf3 Nf6 2. c4 g6 3. Nc3 Bg7 4. d4 O-O 5. Bf4 d5 6. Qb3 dxc4 7. Qxc4 c6 8. e4 Nbd7 9. Rd1 Nb6 10. Qc5 Bg4 11. Bg5 Na4 12. Qa3 Nxc3 13. bxc3 Nxe4 14. Bxe7 Qb6 15. Bc4 Nxc3 16. Bc5 Rfe8+ 17. Kf1 Be6 18. Bxb6 Bxc4+ 19. Kg1 Ne2+ 20. Kf1 Nxd4+ 21. Kg1 Ne2+ 22. Kf1 Nc3+ 23. Kg1 axb6 24. Qb4 Ra4 25. Qxb6 Nxd1 26. h3 Rxa2 27. Kh2 Nxf2 28. Re1 Rxe1 29. Qd8+ Bf8 30. Nxe1 Bd5 31. Nf3 Ne4 32. Qb8 b5 33. h4 h5 34. Ne5 Kg7 35. Kg1 Bc5+ 36. Kf1 Ng3+ 37. Ke1 Bb4+ 38. Kd1 Bb3+ 39. Kc1 Ne2+ 40. Kb1 Nc3+ 41. Kc1 Rc2# 0-1"
+    "pgn": "[Event \"Rosenwald Memorial\"]\n[Site \"New York\"]\n[Date \"1956.10.17\"]\n[White \"Donald Byrne\"]\n[Black \"Robert James Fischer\"]\n[Result \"0-1\"]\n\n1. Nf3 Nf6 2. c4 g6 3. Nc3 Bg7 4. d4 O-O 5. Bf4 d5 6. Qb3 dxc4 7. Qxc4 c6 8. e4 Nbd7 9. Rd1 Nb6 10. Qc5 Bg4 11. Bg5 Na4 12. Qa3 Nxc3 13. bxc3 Nxe4 14. Bxe7 Qb6 15. Bc4 Nxc3 16. Bc5 Rfe8+ 17. Kf1 Be6 18. Bxb6 Bxc4+ 19. Kg1 Ne2+ 20. Kf1 Nxd4+ 21. Kg1 Ne2+ 22. Kf1 Nc3+ 23. Kg1 axb6 24. Qb4 Ra4 25. Qxb6 Nxd1 26. h3 Rxa2 27. Kh2 Nxf2 28. Re1 Rxe1 29. Qd8+ Bf8 30. Nxe1 Bd5 31. Nf3 Ne4 32. Qb8 b5 33. h4 h5 34. Ne5 Kg7 35. Kg1 Bc5+ 36. Kf1 Ng3+ 37. Ke1 Bb4+ 38. Kd1 Bb3+ 39. Kc1 Ne2+ 40. Kb1 Nc3+ 41. Kc1 Rc2# 0-1",
+    "provenance": {
+      "provider": "PGN Mentor cross-check",
+      "retrieved": "2026-10-20",
+      "archive_sha256": "c07174dd3a66116ca74ac3b466e771a53de95068bcafa0a453f6df65d36e0b2b",
+      "pgn_sha256": "1d8afba5a95ed42588e3714af173f8dcf2cd56e06c9814373aa773064e53edf3",
+      "selection": {
+        "Event": "New York Rosenwald",
+        "Site": "New York",
+        "Date": "1956.??.??",
+        "Round": "?",
+        "White": "Byrne, Donald",
+        "Black": "Fischer, Robert James",
+        "Result": "0-1",
+        "WhiteElo": "",
+        "BlackElo": "",
+        "ECO": "D97"
+      },
+      "score_sha256": "340d3897014345a216d7eeffa236bb339ff59accf08439178f9f10ba574bec84",
+      "plies": 82
+    }
+  },
+  {
+    "id": "anderssen-kieseritzky-1851",
+    "title_ko": "불멸의 경기: 안데르센–키제리츠키",
+    "note_ko": "널리 전해지는 23.Be7 체크메이트 기보입니다. 실제 종국 시점에는 전승 차이가 있어, 이 출처의 기보 판본으로 표시합니다.",
+    "sources": [
+      {
+        "label": "원기보 · PGN Mentor",
+        "url": "https://www.pgnmentor.com/players/Anderssen.zip"
+      }
+    ],
+    "provenance": {
+      "provider": "PGN Mentor",
+      "retrieved": "2026-10-20",
+      "archive_sha256": "a7b44e18652e06058dd36f32d10e3f425bf645a1aa71703714494209f01175d4",
+      "pgn_sha256": "97927f56a2f85a01d66e2f747fc86aa61a1aaab3de45ffb8d44b3eee640cffc0",
+      "selection": {
+        "Event": "London 'Immortal game'",
+        "Site": "London",
+        "Date": "1851.??.??",
+        "Round": "?",
+        "White": "Anderssen, Adolf",
+        "Black": "Kieseritzky, Lionel",
+        "Result": "1-0",
+        "ECO": "C33"
+      },
+      "score_sha256": "7a1f0838d8a7df66a29985c5b66db4988c3bf21c15a9e7f28b38afa10af38871",
+      "plies": 45
+    },
+    "pgn": "[Event \"London 'Immortal game'\"]\n[Site \"London\"]\n[Date \"1851.??.??\"]\n[Round \"?\"]\n[White \"Anderssen, Adolf\"]\n[Black \"Kieseritzky, Lionel\"]\n[Result \"1-0\"]\n[ECO \"C33\"]\n\n1. e4 e5 2. f4 exf4 3. Bc4 Qh4+ 4. Kf1 b5 5. Bxb5 Nf6 6. Nf3 Qh6 7. d3 Nh5 8.\nNh4 Qg5 9. Nf5 c6 10. g4 Nf6 11. Rg1 cxb5 12. h4 Qg6 13. h5 Qg5 14. Qf3 Ng8 15.\nBxf4 Qf6 16. Nc3 Bc5 17. Nd5 Qxb2 18. Bd6 Bxg1 19. e5 Qxa1+ 20. Ke2 Na6 21.\nNxg7+ Kd8 22. Qf6+ Nxf6 23. Be7# 1-0"
+  },
+  {
+    "id": "anderssen-dufresne-1852",
+    "title_ko": "에버그린 경기: 안데르센–뒤프렌",
+    "note_ko": "출처에 기록된 주수순과 결과를 재생합니다. 주석의 가상 변화수는 포함하지 않습니다.",
+    "sources": [
+      {
+        "label": "원기보 · PGN Mentor",
+        "url": "https://www.pgnmentor.com/players/Anderssen.zip"
+      }
+    ],
+    "provenance": {
+      "provider": "PGN Mentor",
+      "retrieved": "2026-10-20",
+      "archive_sha256": "a7b44e18652e06058dd36f32d10e3f425bf645a1aa71703714494209f01175d4",
+      "pgn_sha256": "97927f56a2f85a01d66e2f747fc86aa61a1aaab3de45ffb8d44b3eee640cffc0",
+      "selection": {
+        "Event": "Berlin 'Evergreen'",
+        "Site": "Berlin",
+        "Date": "1852.??.??",
+        "Round": "?",
+        "White": "Anderssen, Adolf",
+        "Black": "Dufresne, Jean",
+        "Result": "1-0",
+        "ECO": "C52"
+      },
+      "score_sha256": "b72cc3a8f3413d3b86ffc3f3c5fd7c2d0b25dbcc283b5d002a28ea58b65c2ddd",
+      "plies": 47
+    },
+    "pgn": "[Event \"Berlin 'Evergreen'\"]\n[Site \"Berlin\"]\n[Date \"1852.??.??\"]\n[Round \"?\"]\n[White \"Anderssen, Adolf\"]\n[Black \"Dufresne, Jean\"]\n[Result \"1-0\"]\n[ECO \"C52\"]\n\n1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5 4. b4 Bxb4 5. c3 Ba5 6. d4 exd4 7. O-O d3 8. Qb3\nQf6 9. e5 Qg6 10. Re1 Nge7 11. Ba3 b5 12. Qxb5 Rb8 13. Qa4 Bb6 14. Nbd2 Bb7 15.\nNe4 Qf5 16. Bxd3 Qh5 17. Nf6+ gxf6 18. exf6 Rg8 19. Rad1 Qxf3 20. Rxe7+ Nxe7\n21. Qxd7+ Kxd7 22. Bf5+ Ke8 23. Bd7+ Kf8 24. Bxe7# 1-0"
+  },
+  {
+    "id": "morphy-opera-1858",
+    "title_ko": "오페라 게임: 모피의 공격",
+    "note_ko": "출처에 기록된 주수순과 결과를 재생합니다. 주석의 가상 변화수는 포함하지 않습니다.",
+    "sources": [
+      {
+        "label": "원기보 · PGN Mentor",
+        "url": "https://www.pgnmentor.com/players/Morphy.zip"
+      }
+    ],
+    "provenance": {
+      "provider": "PGN Mentor",
+      "retrieved": "2026-10-20",
+      "archive_sha256": "0fbc42563014f6467a0ce7356d23cfb50ddc6a35b72a4f84b3030240caaaf93e",
+      "pgn_sha256": "9d439e0af24f1982dbbe8eb2f5156206983426e60cb52dee15ce7983a2c96af9",
+      "selection": {
+        "Event": "Paris it",
+        "Site": "Paris",
+        "Date": "1858.??.??",
+        "Round": "?",
+        "White": "Morphy, Paul ",
+        "Black": "Duke Karl Count Isouard",
+        "Result": "1-0",
+        "ECO": "C41"
+      },
+      "score_sha256": "f4d7ff5795e28329aa93c2dd56d9eeda1d041d531ee6da057338c6f559911b05",
+      "plies": 33
+    },
+    "pgn": "[Event \"Paris it\"]\n[Site \"Paris\"]\n[Date \"1858.??.??\"]\n[Round \"?\"]\n[White \"Morphy, Paul \"]\n[Black \"Duke Karl Count Isouard\"]\n[Result \"1-0\"]\n[ECO \"C41\"]\n\n1. e4 e5 2. Nf3 d6 3. d4 Bg4 4. dxe5 Bxf3 5. Qxf3 dxe5 6. Bc4 Nf6 7. Qb3 Qe7 8.\nNc3 c6 9. Bg5 b5 10. Nxb5 cxb5 11. Bxb5+ Nbd7 12. O-O-O Rd8 13. Rxd7 Rxd7 14.\nRd1 Qe6 15. Bxd7+ Nxd7 16. Qb8+ Nxb8 17. Rd8# 1-0"
+  },
+  {
+    "id": "levitsky-marshall-1912",
+    "title_ko": "레비츠키–마셜: 퀸 희생",
+    "note_ko": "출처에 기록된 주수순과 결과를 재생합니다. 주석의 가상 변화수는 포함하지 않습니다.",
+    "sources": [
+      {
+        "label": "원기보 · PGN Mentor",
+        "url": "https://www.pgnmentor.com/players/Marshall.zip"
+      }
+    ],
+    "provenance": {
+      "provider": "PGN Mentor",
+      "retrieved": "2026-10-20",
+      "archive_sha256": "01280153412a1bc4c1967c4b0a2ee75897ecbda09caffe740bfc1a8082b7ac68",
+      "pgn_sha256": "07357fd22eec4d30ea0d3c95b27eec7cf1809f7987dda2d5cebbe4a6547af2b0",
+      "selection": {
+        "Event": "DSB-18.Kongress",
+        "Site": "Breslau",
+        "Date": "1912.??.??",
+        "Round": "6",
+        "White": "Levitsky, Stepan M",
+        "Black": "Marshall, Frank James",
+        "Result": "0-1",
+        "ECO": "B40"
+      },
+      "score_sha256": "b80b1d5043e3836f1e06d0832b733983450d255787306e32a93d95d6a00d4ea1",
+      "plies": 46
+    },
+    "pgn": "[Event \"DSB-18.Kongress\"]\n[Site \"Breslau\"]\n[Date \"1912.??.??\"]\n[Round \"6\"]\n[White \"Levitsky, Stepan M\"]\n[Black \"Marshall, Frank James\"]\n[Result \"0-1\"]\n[ECO \"B40\"]\n\n1. e4 e6 2. d4 d5 3. Nc3 c5 4. Nf3 Nc6 5. exd5 exd5 6. Be2 Nf6 7. O-O Be7 8.\nBg5 O-O 9. dxc5 Be6 10. Nd4 Bxc5 11. Nxe6 fxe6 12. Bg4 Qd6 13. Bh3 Rae8 14. Qd2\nBb4 15. Bxf6 Rxf6 16. Rad1 Qc5 17. Qe2 Bxc3 18. bxc3 Qxc3 19. Rxd5 Nd4 20. Qh5\nRef8 21. Re5 Rh6 22. Qg5 Rxh3 23. Rc5 Qg3 0-1"
+  },
+  {
+    "id": "capablanca-marshall-1918",
+    "title_ko": "카파블랑카–마셜: 마셜 공격",
+    "note_ko": "출처에 기록된 주수순과 결과를 재생합니다. 주석의 가상 변화수는 포함하지 않습니다.",
+    "sources": [
+      {
+        "label": "원기보 · PGN Mentor",
+        "url": "https://www.pgnmentor.com/players/Marshall.zip"
+      }
+    ],
+    "provenance": {
+      "provider": "PGN Mentor",
+      "retrieved": "2026-10-20",
+      "archive_sha256": "01280153412a1bc4c1967c4b0a2ee75897ecbda09caffe740bfc1a8082b7ac68",
+      "pgn_sha256": "07357fd22eec4d30ea0d3c95b27eec7cf1809f7987dda2d5cebbe4a6547af2b0",
+      "selection": {
+        "Event": "New York",
+        "Site": "New York",
+        "Date": "1918.??.??",
+        "Round": "?",
+        "White": "Capablanca, Jose Raul",
+        "Black": "Marshall, Frank James",
+        "Result": "1-0",
+        "ECO": "C89"
+      },
+      "score_sha256": "f939da20f56bc689b3cecdfed3f7ecadba768dee163be310975baadbb8282599",
+      "plies": 71
+    },
+    "pgn": "[Event \"New York\"]\n[Site \"New York\"]\n[Date \"1918.??.??\"]\n[Round \"?\"]\n[White \"Capablanca, Jose Raul\"]\n[Black \"Marshall, Frank James\"]\n[Result \"1-0\"]\n[ECO \"C89\"]\n\n1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7 6. Re1 b5 7. Bb3 O-O 8. c3\nd5 9. exd5 Nxd5 10. Nxe5 Nxe5 11. Rxe5 Nf6 12. Re1 Bd6 13. h3 Ng4 14. Qf3 Qh4\n15. d4 Nxf2 16. Re2 Bg4 17. hxg4 Bh2+ 18. Kf1 Bg3 19. Rxf2 Qh1+ 20. Ke2 Bxf2\n21. Bd2 Bh4 22. Qh3 Rae8+ 23. Kd3 Qf1+ 24. Kc2 Bf2 25. Qf3 Qg1 26. Bd5 c5 27.\ndxc5 Bxc5 28. b4 Bd6 29. a4 a5 30. axb5 axb4 31. Ra6 bxc3 32. Nxc3 Bb4 33. b6\nBxc3 34. Bxc3 h6 35. b7 Re3 36. Bxf7+ 1-0"
+  },
+  {
+    "id": "rotlewi-rubinstein-1907",
+    "title_ko": "로틀레비–루빈스타인: 기물의 협력",
+    "note_ko": "출처에 기록된 주수순과 결과를 재생합니다. 주석의 가상 변화수는 포함하지 않습니다.",
+    "sources": [
+      {
+        "label": "원기보 · PGN Mentor",
+        "url": "https://www.pgnmentor.com/players/Rubinstein.zip"
+      }
+    ],
+    "provenance": {
+      "provider": "PGN Mentor",
+      "retrieved": "2026-10-20",
+      "archive_sha256": "63b48a0f65ad783c233ec569b9081e3478a847bc60d9fe32e9cc346daa8471f4",
+      "pgn_sha256": "d7aba2fadcb6c3ee19a58bcc40ce9223b24cc47f48255930be4ae8ae17ad9925",
+      "selection": {
+        "Event": "Lodz1",
+        "Site": "Lodz",
+        "Date": "1907.??.??",
+        "Round": "?",
+        "White": "Rotlewi, Georg A",
+        "Black": "Rubinstein, Akiba",
+        "Result": "0-1",
+        "ECO": "D40"
+      },
+      "score_sha256": "f52b59d43888483e341e02b82e56e4e4af05e822039d8c6b16f5deaa63c6656e",
+      "plies": 50
+    },
+    "pgn": "[Event \"Lodz1\"]\n[Site \"Lodz\"]\n[Date \"1907.??.??\"]\n[Round \"?\"]\n[White \"Rotlewi, Georg A\"]\n[Black \"Rubinstein, Akiba\"]\n[Result \"0-1\"]\n[ECO \"D40\"]\n\n1. d4 d5 2. Nf3 e6 3. e3 c5 4. c4 Nc6 5. Nc3 Nf6 6. dxc5 Bxc5 7. a3 a6 8. b4\nBd6 9. Bb2 O-O 10. Qd2 Qe7 11. Bd3 dxc4 12. Bxc4 b5 13. Bd3 Rd8 14. Qe2 Bb7 15.\nO-O Ne5 16. Nxe5 Bxe5 17. f4 Bc7 18. e4 Rac8 19. e5 Bb6+ 20. Kh1 Ng4 21. Be4\nQh4 22. g3 Rxc3 23. gxh4 Rd2 24. Qxd2 Bxe4+ 25. Qg2 Rh3 0-1"
+  },
+  {
+    "id": "botvinnik-capablanca-1938",
+    "title_ko": "보트비니크–카파블랑카: 중앙의 돌파",
+    "note_ko": "출처에 기록된 주수순과 결과를 재생합니다. 주석의 가상 변화수는 포함하지 않습니다.",
+    "sources": [
+      {
+        "label": "원기보 · PGN Mentor",
+        "url": "https://www.pgnmentor.com/players/Botvinnik.zip"
+      }
+    ],
+    "provenance": {
+      "provider": "PGN Mentor",
+      "retrieved": "2026-10-20",
+      "archive_sha256": "54f80c0ecab341aded6db8ebd5d29776fde1a7afc66995ffb103c9e226f3ed9c",
+      "pgn_sha256": "e3c691869be7792e15c7f821f437ad14efd2fe56d118d8750438f7556a43e7f1",
+      "selection": {
+        "Event": "AVRO",
+        "Site": "Amsterdam",
+        "Date": "1938.??.??",
+        "Round": "?",
+        "White": "Botvinnik, Mikhail",
+        "Black": "Capablanca, Jose Raul",
+        "Result": "1-0",
+        "ECO": "E49"
+      },
+      "score_sha256": "0125f5fbfd205232b37e8934b68399df15268b777d07085828604f2ffefebfc9",
+      "plies": 81
+    },
+    "pgn": "[Event \"AVRO\"]\n[Site \"Amsterdam\"]\n[Date \"1938.??.??\"]\n[Round \"?\"]\n[White \"Botvinnik, Mikhail\"]\n[Black \"Capablanca, Jose Raul\"]\n[Result \"1-0\"]\n[ECO \"E49\"]\n\n1. d4 Nf6 2. c4 e6 3. Nc3 Bb4 4. e3 d5 5. a3 Bxc3+ 6. bxc3 c5 7. cxd5 exd5 8.\nBd3 O-O 9. Ne2 b6 10. O-O Ba6 11. Bxa6 Nxa6 12. Bb2 Qd7 13. a4 Rfe8 14. Qd3 c4\n15. Qc2 Nb8 16. Rae1 Nc6 17. Ng3 Na5 18. f3 Nb3 19. e4 Qxa4 20. e5 Nd7 21. Qf2\ng6 22. f4 f5 23. exf6 Nxf6 24. f5 Rxe1 25. Rxe1 Re8 26. Re6 Rxe6 27. fxe6 Kg7\n28. Qf4 Qe8 29. Qe5 Qe7 30. Ba3 Qxa3 31. Nh5+ gxh5 32. Qg5+ Kf8 33. Qxf6+ Kg8\n34. e7 Qc1+ 35. Kf2 Qc2+ 36. Kg3 Qd3+ 37. Kh4 Qe4+ 38. Kxh5 Qe2+ 39. Kh4 Qe4+\n40. g4 Qe1+ 41. Kh5 1-0"
+  },
+  {
+    "id": "kasparov-topalov-1999",
+    "title_ko": "카스파로프–토팔로프: 킹 추격",
+    "note_ko": "출처에 기록된 주수순과 결과를 재생합니다. 주석의 가상 변화수는 포함하지 않습니다.",
+    "sources": [
+      {
+        "label": "원기보 · PGN Mentor",
+        "url": "https://www.pgnmentor.com/players/Kasparov.zip"
+      }
+    ],
+    "provenance": {
+      "provider": "PGN Mentor",
+      "retrieved": "2026-10-20",
+      "archive_sha256": "c5acd2fa3175af0a32a3b45fc57282b21aaeda973a47b1e126668166a34a5702",
+      "pgn_sha256": "02d021df5ea2b2896f89ec752eb0f9db8af61f2726a6d4e75a7bb1ced9aa9a80",
+      "selection": {
+        "Event": "Hoogovens",
+        "Site": "Wijk aan Zee",
+        "Date": "1999.01.20",
+        "Round": "4",
+        "White": "Kasparov, Gary",
+        "Black": "Topalov, Veselin",
+        "Result": "1-0",
+        "WhiteElo": "2812",
+        "BlackElo": "2700",
+        "ECO": "B07"
+      },
+      "score_sha256": "2b863a964cf74ab7fc42886b29c3cee746a9d70c30199c3139c44b224851d114",
+      "plies": 87
+    },
+    "pgn": "[Event \"Hoogovens\"]\n[Site \"Wijk aan Zee\"]\n[Date \"1999.01.20\"]\n[Round \"4\"]\n[White \"Kasparov, Gary\"]\n[Black \"Topalov, Veselin\"]\n[Result \"1-0\"]\n[WhiteElo \"2812\"]\n[BlackElo \"2700\"]\n[ECO \"B07\"]\n\n1. e4 d6 2. d4 Nf6 3. Nc3 g6 4. Be3 Bg7 5. Qd2 c6 6. f3 b5 7. Nge2 Nbd7 8. Bh6\nBxh6 9. Qxh6 Bb7 10. a3 e5 11. O-O-O Qe7 12. Kb1 a6 13. Nc1 O-O-O 14. Nb3 exd4\n15. Rxd4 c5 16. Rd1 Nb6 17. g3 Kb8 18. Na5 Ba8 19. Bh3 d5 20. Qf4+ Ka7 21. Rhe1\nd4 22. Nd5 Nbxd5 23. exd5 Qd6 24. Rxd4 cxd4 25. Re7+ Kb6 26. Qxd4+ Kxa5 27. b4+\nKa4 28. Qc3 Qxd5 29. Ra7 Bb7 30. Rxb7 Qc4 31. Qxf6 Kxa3 32. Qxa6+ Kxb4 33. c3+\nKxc3 34. Qa1+ Kd2 35. Qb2+ Kd1 36. Bf1 Rd2 37. Rd7 Rxd7 38. Bxc4 bxc4 39. Qxh8\nRd3 40. Qa8 c3 41. Qa4+ Ke1 42. f4 f5 43. Kc1 Rd2 44. Qa7 1-0"
+  },
+  {
+    "id": "karpov-kasparov-1985-g16",
+    "title_ko": "1985 세계선수권 16국: 카르포프–카스파로프",
+    "note_ko": "출처에 기록된 주수순과 결과를 재생합니다. 주석의 가상 변화수는 포함하지 않습니다.",
+    "sources": [
+      {
+        "label": "원기보 · PGN Mentor",
+        "url": "https://www.pgnmentor.com/players/Kasparov.zip"
+      }
+    ],
+    "provenance": {
+      "provider": "PGN Mentor",
+      "retrieved": "2026-10-20",
+      "archive_sha256": "c5acd2fa3175af0a32a3b45fc57282b21aaeda973a47b1e126668166a34a5702",
+      "pgn_sha256": "02d021df5ea2b2896f89ec752eb0f9db8af61f2726a6d4e75a7bb1ced9aa9a80",
+      "selection": {
+        "Event": "World Championship 32th-KK2",
+        "Site": "Moscow",
+        "Date": "1985.??.??",
+        "Round": "16",
+        "White": "Karpov, Anatoly",
+        "Black": "Kasparov, Gary",
+        "Result": "0-1",
+        "WhiteElo": "2720",
+        "BlackElo": "2700",
+        "ECO": "B44"
+      },
+      "score_sha256": "2ae44fd20a10f740ac28ddb2fce1fef8ee1226e8301b716f3a65edef8080027e",
+      "plies": 80
+    },
+    "pgn": "[Event \"World Championship 32th-KK2\"]\n[Site \"Moscow\"]\n[Date \"1985.??.??\"]\n[Round \"16\"]\n[White \"Karpov, Anatoly\"]\n[Black \"Kasparov, Gary\"]\n[Result \"0-1\"]\n[WhiteElo \"2720\"]\n[BlackElo \"2700\"]\n[ECO \"B44\"]\n\n1. e4 c5 2. Nf3 e6 3. d4 cxd4 4. Nxd4 Nc6 5. Nb5 d6 6. c4 Nf6 7. N1c3 a6 8. Na3\nd5 9. cxd5 exd5 10. exd5 Nb4 11. Be2 Bc5 12. O-O O-O 13. Bf3 Bf5 14. Bg5 Re8\n15. Qd2 b5 16. Rad1 Nd3 17. Nab1 h6 18. Bh4 b4 19. Na4 Bd6 20. Bg3 Rc8 21. b3\ng5 22. Bxd6 Qxd6 23. g3 Nd7 24. Bg2 Qf6 25. a3 a5 26. axb4 axb4 27. Qa2 Bg6 28.\nd6 g4 29. Qd2 Kg7 30. f3 Qxd6 31. fxg4 Qd4+ 32. Kh1 Nf6 33. Rf4 Ne4 34. Qxd3\nNf2+ 35. Rxf2 Bxd3 36. Rfd2 Qe3 37. Rxd3 Rc1 38. Nb2 Qf2 39. Nd2 Rxd1+ 40. Nxd1\nRe1+ 0-1"
+  },
+  {
+    "id": "fischer-spassky-1972-g6",
+    "title_ko": "1972 세계선수권 6국: 피셔–스파스키",
+    "note_ko": "출처에 기록된 주수순과 결과를 재생합니다. 주석의 가상 변화수는 포함하지 않습니다.",
+    "sources": [
+      {
+        "label": "원기보 · PGN Mentor",
+        "url": "https://www.pgnmentor.com/players/Fischer.zip"
+      }
+    ],
+    "provenance": {
+      "provider": "PGN Mentor",
+      "retrieved": "2026-10-20",
+      "archive_sha256": "c07174dd3a66116ca74ac3b466e771a53de95068bcafa0a453f6df65d36e0b2b",
+      "pgn_sha256": "1d8afba5a95ed42588e3714af173f8dcf2cd56e06c9814373aa773064e53edf3",
+      "selection": {
+        "Event": "World Championship 28th",
+        "Site": "Reykjavik",
+        "Date": "1972.??.??",
+        "Round": "6",
+        "White": "Fischer, Robert James",
+        "Black": "Spassky, Boris V",
+        "Result": "1-0",
+        "WhiteElo": "2785",
+        "BlackElo": "2660",
+        "ECO": "D59"
+      },
+      "score_sha256": "79f6cbcd104f8cd76a32f94da0849302b1e0d671c6787258ed7399ac6ce0757e",
+      "plies": 81
+    },
+    "pgn": "[Event \"World Championship 28th\"]\n[Site \"Reykjavik\"]\n[Date \"1972.??.??\"]\n[Round \"6\"]\n[White \"Fischer, Robert James\"]\n[Black \"Spassky, Boris V\"]\n[Result \"1-0\"]\n[WhiteElo \"2785\"]\n[BlackElo \"2660\"]\n[ECO \"D59\"]\n\n1. c4 e6 2. Nf3 d5 3. d4 Nf6 4. Nc3 Be7 5. Bg5 O-O 6. e3 h6 7. Bh4 b6 8. cxd5\nNxd5 9. Bxe7 Qxe7 10. Nxd5 exd5 11. Rc1 Be6 12. Qa4 c5 13. Qa3 Rc8 14. Bb5 a6\n15. dxc5 bxc5 16. O-O Ra7 17. Be2 Nd7 18. Nd4 Qf8 19. Nxe6 fxe6 20. e4 d4 21.\nf4 Qe7 22. e5 Rb8 23. Bc4 Kh8 24. Qh3 Nf8 25. b3 a5 26. f5 exf5 27. Rxf5 Nh7\n28. Rcf1 Qd8 29. Qg3 Re7 30. h4 Rbb7 31. e6 Rbc7 32. Qe5 Qe8 33. a4 Qd8 34.\nR1f2 Qe8 35. R2f3 Qd8 36. Bd3 Qe8 37. Qe4 Nf6 38. Rxf6 gxf6 39. Rxf6 Kg8 40.\nBc4 Kh8 41. Qf4 1-0"
   }
 ]

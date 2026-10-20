@@ -24,3 +24,6 @@
 #history-active{border:1px solid #e3c58a55;border-radius:12px;padding:14px;background:#e3c58a08}
 #history-active h2{margin:8px 0}#history-active .badge{color:#f2d392}#history-engine,#history-retry{font-size:12px}
 #move-list{max-height:230px;overflow-y:auto}
+
+#master-connection{border:1px solid #79cfdb25;border-radius:10px;padding:10px 13px;margin:12px 0}
+#master-connection .history-actions button{font-size:12px}#master-connection-status{margin-bottom:0}

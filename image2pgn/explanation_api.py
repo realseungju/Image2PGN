@@ -17,10 +17,11 @@ import numpy as np
 from PIL import Image
 from fastapi import File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, Response
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
 from .explanations import AnalysisCancelled, capture_options, explain
-from .master_games import MasterGames
+from .master_games import MasterGames, RemoteFailure
 
 
 class Answers(BaseModel):
@@ -219,6 +220,34 @@ def install_explanation_api(app, recognize_payload, web_dir, popup=None, analyse
             return capture_options(position.fen, position.before_fen, position.target_uci, focus_square=position.focus_square)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
+
+    @app.get('/api/explanations/master-connection')
+    def master_connection():
+        return app.state.master_games.connection_status()
+
+    @app.post('/api/explanations/master-connection')
+    async def configure_master_connection(request: Request):
+        # Parse manually so validation errors can never echo a submitted secret.
+        payload = bytearray()
+        async for chunk in request.stream():
+            payload.extend(chunk)
+            if len(payload) > 8192:
+                raise HTTPException(413, '연결 입력이 너무 큽니다.')
+        try:
+            data = json.loads(payload)
+            if not isinstance(data, dict) or set(data) - {'action', 'token', 'remember'}:
+                raise ValueError()
+            action, token, remember = data.get('action'), data.get('token', ''), data.get('remember', False)
+            if action not in {'connect', 'test', 'disconnect'} or not isinstance(token, str) or not isinstance(remember, bool):
+                raise ValueError()
+        except (ValueError, TypeError, UnicodeError):
+            raise HTTPException(400, '올바른 연결 요청이 필요합니다.') from None
+        try:
+            return await run_in_threadpool(app.state.master_games.configure, action, token, remember)
+        except RemoteFailure as exc:
+            raise HTTPException({'auth_required': 401, 'rate_limited': 429, 'busy': 409}.get(exc.status, 502), exc.message) from None
+        except (ValueError, OSError):
+            raise HTTPException(400, '토큰 형식·연결·암호화 저장을 확인하세요. 입력한 토큰은 응답에 포함하지 않습니다.') from None
 
     @app.post('/api/explanations')
     async def create(request_id: str = Form(..., min_length=1, max_length=100), question: str = Form('', max_length=2000),

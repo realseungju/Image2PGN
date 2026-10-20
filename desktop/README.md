@@ -61,8 +61,10 @@ under `.tmp/popup-smoke/` or `CHESSLENS_SMOKE_DIR`.
 
 After a confirmed position reaches `ready`, the result page searches the bundled
 historical catalog immediately, then the Lichess Masters database. The catalog
-currently contains Fischer–Benko (1963) and Donald Byrne–Fischer (1956), with
-sources in `image2pgn/data/famous_games.json`. No historical Elo is fabricated.
+currently contains 12 selected games (744 plies), with sources and source-file
+SHA-256 fingerprints in `image2pgn/data/famous_games.json`. See
+`image2pgn/data/README.md` for the full list and historical-score caveats. No
+historical Elo is fabricated.
 Online results require **both** recorded player ratings to be at least 2400;
 ordinary Lichess player games are never queried.
 
@@ -82,16 +84,39 @@ Outbound requests use only `https://explorer.lichess.org/masters`, one at a time
 with 5-second network-operation timeouts, a 128 KiB response cap, at most three
 PGN downloads from 15 candidate references, and a 32-entry five-minute cache.
 HTTP 429 enforces a shared 60-second pause. Images are never sent to this service.
-An optional `CHESSLENS_LICHESS_TOKEN` environment variable is read only by the
-server for bearer authentication; configure it locally before starting the
-service, never paste it into chat or a browser form. Tokens are not returned to
-the browser or recorded in application responses.
+Opening Explorer now requires Lichess authentication. Open **마스터 DB 연결** on
+`/explain`, create a personal token with no permission scopes selected, paste it
+into the local password field, then click **연결**. The server verifies a real
+Masters response before applying the token and clearing stale failure caches.
+Do not send the token through chat. The UI clears the field before submission.
 
-Live validation on 2026-10-20 received HTTP 401 from both published Masters hosts.
-The cause is not established; token support does not establish that a token will
-resolve this host response. Connection/authentication errors remain visible and
-the catalog and engine continue working. Full external search needs live
-validation when access is available. No fallback to ordinary games is made.
+By default the token lives only in service memory. If the user checks
+**이 Windows 계정에 암호화해 저장**, Windows-user DPAPI encrypts it into the
+Git-ignored `.tmp/lichess-token.dpapi`. It is not written in plaintext or kept in
+browser storage. `CHESSLENS_LICHESS_TOKEN` remains supported for existing server
+setups. **연결 해제** removes the local ciphertext and running connection; it does
+not revoke the token on Lichess. Environment variables remain in the launcher's
+environment and may configure the token again after a restart.
+
+`GET /api/explanations/master-connection` returns configured/verified/source flags
+without the token. POST JSON with `action=connect`, `token`, and optional
+`remember=true` verifies and applies credentials. `action=test` rechecks the
+existing connection; `action=disconnect` clears the local connection. All routes
+require the existing ChessLens session token and loopback/Origin checks. Request
+validation uses fixed errors that never echo token input. HTTP 429 cooldown is
+preserved across reconnect/disconnect.
+
+The original unauthenticated HTTP 401 was reproduced and is explained by the
+current official API security definition and lichess-org/mobile issue #3161.
+Authenticated live validation on 2026-10-20 returned three Carlsen/Caruana
+master games after 1.e4 (both ratings 2835 or higher), with complete legal replay
+of 72/128/132 plies, plus a matching Kasparov–Topalov middlegame query. The latter
+was deduplicated against the catalog. The browser replay reached the recorded
+draw and hid engine scores. No fallback to ordinary player games is made.
+
+The Masters year type starts at 1952. The original `since=0` parameter produced
+HTTP 400 after authentication; it was removed in favor of the valid default
+range. Earlier historical games are covered by the selected offline catalog.
 
 Checks: `python -m pytest tests -q` and
 `node --test tests/test_history_replay.cjs tests/test_external_source.cjs tests/test_explain_copy.cjs tests/test_popup.cjs`.

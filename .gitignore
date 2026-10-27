@@ -13,3 +13,13 @@ dataset_synth*/
 models/
 inspect_samples/
 *.zip
+
+# Local engines, credentials and Python build outputs
+stockfish/
+engines/
+.env
+.env.*
+*.dpapi
+build/
+dist/
+*.egg-info/

@@ -5,12 +5,13 @@ from pathlib import Path
 import uvicorn
 
 from .webapp import create_app
+from .launcher import default_model
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', type=int, default=8771)
-    parser.add_argument('--model', type=Path, default=Path(__file__).resolve().parents[1]/'models/piece_cnn_target_mix.pt')
+    parser.add_argument('--model', type=Path, default=default_model())
     parser.add_argument('--engine', type=Path)
     args = parser.parse_args()
     if not 1024 <= args.port <= 65535:

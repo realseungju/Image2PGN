@@ -40,7 +40,7 @@ class AnalyzeRequest(BaseModel):
 def create_app(model_path: Path | None = None, engine_path: Path | None = None, device: str = "cpu") -> FastAPI:
     app = FastAPI(title="ChessLens", docs_url="/api/docs", redoc_url=None)
     app.state.config = WebConfig(
-        model_path=model_path or _path_from_env("CHESSLENS_MODEL_PATH"),
+        model_path=model_path or _path_from_env("CHESSLENS_MODEL_PATH") or Path(__file__).with_name("assets") / "piece_classifier.pt",
         engine_path=engine_path or _path_from_env("CHESSLENS_ENGINE_PATH"),
         device=device,
     )
@@ -48,6 +48,10 @@ def create_app(model_path: Path | None = None, engine_path: Path | None = None, 
 
     @app.get("/", include_in_schema=False)
     def index():
+        return FileResponse(WEB_DIR / "explain.html")
+
+    @app.get("/workspace", include_in_schema=False)
+    def workspace():
         return FileResponse(WEB_DIR / "index.html")
 
     @app.post("/api/recognize")

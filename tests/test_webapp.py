@@ -14,8 +14,8 @@ def configured_app(tmp_path: Path):
     return webapp.create_app(model_path=model, engine_path=tmp_path / "stockfish")
 
 
-def test_index_serves_english_analysis_workspace(tmp_path):
-    response = TestClient(configured_app(tmp_path)).get("/")
+def test_legacy_workspace_serves_english_analysis_workspace(tmp_path):
+    response = TestClient(configured_app(tmp_path)).get("/workspace")
     assert response.status_code == 200
     assert "Drop a chess screenshot" in response.text
     assert "Analyze with Stockfish" in response.text

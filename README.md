@@ -1,859 +1,194 @@
 # ChessLens
 
-## Experimental screenshot improvements (2026-09-07)
+[English](README.md) · [한국어](README.ko.md)
 
-Two independent options are available for `fen-cnn` and `analyze-image`:
+**Turn a chess screenshot into a reviewed position, then explore it with Stockfish.**
 
-- `--board-detector grid`: locate an axis-aligned 8x8 background pattern before
-  falling back to the original contour detector. The search covers boards at
-  least half the screenshot width, with height/width near 0.92–1.04.
-- `--background-filter`: use board corner colors and texture to suppress CNN
-  predictions on squares with no substantial central foreground component.
-  This changes postprocessing, not model weights or training.
+ChessLens runs on your computer. Upload a PNG/JPEG, correct the board if needed,
+confirm the game state, and replay engine variations. You can also find matching
+historical games and compare a selected recorded move with an engine recommendation.
 
-```powershell
-.\.venv\Scripts\python.exe -m image2pgn fen-cnn `
-  --image path\to\screenshot.jpg `
-  --model models\piece_cnn_target_mix.pt `
-  --orientation auto --threshold 0.5 `
-  --board-detector grid --background-filter
+The repository keeps its original name, `Image2PGN`. A single screenshot does not
+contain enough information to reconstruct a game's move history.
+
+[Visual walkthrough](https://whichai.fyi/chesslens#image-flow) · [Report an issue](https://github.com/realseungju/Image2PGN/issues)
+
+The walkthrough uses prerecorded examples. The application below performs local
+recognition and analysis. Its explanation UI currently uses Korean labels; this
+README includes their English meaning.
+
+## Quick start
+
+You need [uv](https://docs.astral.sh/uv/getting-started/installation/) and a
+separately installed [Stockfish executable](https://stockfishchess.org/download/).
+uv prepares Python 3.12 and the project environment. The first run downloads
+dependencies; subsequent runs reuse them. No LLM service or API key is required.
+
+```sh
+git clone https://github.com/realseungju/Image2PGN.git
+cd Image2PGN
+uv run chesslens
 ```
 
-Both are **opt-in**: omitting the options preserves the original behavior.
-The first development collection contained 15 user-provided screenshots with
-provisional visual labels. Complete piece-placement matches were 6/15 for the
-original pipeline, 8/15 for grid detection alone, 6/15 for background filtering
-alone, and 9/15 with both. Correct squares were 804, 878, 826, and 906 of 960,
-respectively. These are development regressions, **not held-out performance**.
-Three images had fewer correct squares with both options; one exposed the
-existing orientation heuristic reversing the board after color misclassification.
-Different piece designs, text overlays, small/low-contrast pieces, and heavy
-perspective remain limitations. The background filter needs a correctly aligned
-grid; it can remove real pieces if its background assumption fails.
-
-Reproduce a four-way comparison with local images and labels (no bundled personal screenshots):
+If Stockfish is not on `PATH`, give its executable path:
 
 ```powershell
-.\.venv\Scripts\python.exe infra\evaluate_screenshots.py `
-  --images path\to\screenshots --labels path\to\visual-labels.json `
-  --model models\piece_cnn_target_mix.pt --out output\screenshot-comparison
+uv run chesslens --engine "C:\tools\stockfish\stockfish.exe"
 ```
 
-The manifest has `items` containing `file`, `orientation` (`white` or `black`),
-and `rows` (eight screen-order strings of eight FEN piece symbols, with `.` for
-empty). Results include input/model/label hashes, predictions and per-square
-errors. Label quality and independence must be checked before using new scores
-as a performance claim.
+```sh
+# Linux/macOS example
+uv run chesslens --engine /path/to/stockfish
+```
 
-ChessLens is a chess position understanding prototype. It converts board
-screenshots into FEN, then uses that position as the foundation for engine-based
-analysis, threat detection, candidate move review, and human-readable plans.
+The launcher checks the bundled classifier and the UCI engine, starts the server,
+and opens **http://127.0.0.1:8771/**. Stop it with **Ctrl+C** in the terminal.
+Stockfish must be extracted from its archive before you select the executable.
 
-Current scope: **board screenshot -> FEN**.
+```sh
+uv run chesslens --doctor                 # Check configuration without serving
+uv run chesslens --no-browser             # Print the URL; do not open a browser
+uv run chesslens --port 8787              # Use another port
+uv run chesslens --model /path/model.pt   # Use a compatible custom checkpoint
+```
 
-The project was originally named Image2PGN, but the direction has shifted away
-from reconstructing PGN from a single image. A single board image does not carry
-move history, so the practical goal is accurate FEN extraction followed by chess
-engine analysis.
+`CHESSLENS_MODEL_PATH` and `CHESSLENS_ENGINE_PATH` are supported; explicit command
+arguments take precedence. Engine discovery also checks `PATH`, `./stockfish/`,
+and `~/Documents/stockfish/` for Windows `stockfish*.exe` files. Python imports and
+the bundled model do not depend on another repository or a personal directory.
 
-Target workflow:
+## Upload, review, analyze
+
+1. Click **체스 화면 첨부** (*Attach chess screenshot*) and choose a PNG/JPEG.
+   You can try `image/chess_img4.png` from this repository. Uploads are limited
+   to 10 MiB and 24 million pixels.
+2. Click **분석 시작** (*Start analysis*). Recognition proposes a board; it does
+   not establish whose turn it is or what happened earlier in the game.
+3. Compare the detected board with the source crop. Open **판 인식 수정**
+   (*Correct recognition*), choose a piece or empty square, and click any square
+   that needs correction. Yellow squares need particular attention.
+4. Choose **백 차례 / 흑 차례** (*White / Black to move*). Open
+   **게임 상태와 전체 FEN 확인** (*Game state and full FEN*) to review or change
+   castling, en passant, and move counters. Screenshot-derived special rights
+   initially default to none (`-`); confirm or correct them yourself.
+5. Keep **판 전체 분석** (*Whole-board analysis*) or select a particular opposing
+   piece/capture to inspect. Confirm the piece positions and game-state fields,
+   and any overlay review requested by the page.
+6. Click **이 판으로 분석** (*Analyze this position*). Explore the returned branches
+   with playback, previous/next, and board flip. **새로운 분석** (*New analysis*) starts another position.
+
+Known FENs can be entered in **판 정보 직접 입력 (FEN)** instead of uploading an
+image. Engine continuations are hypothetical; they are not recovered move history.
+
+## Recorded games and selected-move comparison
+
+- The bundled catalog has **12 selected historical games**, with source links and
+  provenance in [the catalog notes](image2pgn/data/README.md).
+- After a position is confirmed and analyzed, matching recorded games can be
+  replayed from their start or the matching position. A match is a candidate,
+  not proof of where a screenshot came from.
+- During recorded playback, select a move and use **이 수와 엔진 추천 비교**
+  (*Compare this move with the engine*). Recorded and recommended continuations
+  remain separate. A different recommendation alone is not labelled a mistake.
+- Optional **마스터 DB 연결** (*Master DB connection*) enables Lichess Masters
+  lookup. Enter your token directly in the local app. No permission scopes are
+  needed for this lookup. Both returned player ratings must be at least 2400;
+  ordinary player games are not searched.
+- Tokens default to memory. Optional encrypted persistence uses Windows-user
+  DPAPI and is unavailable on other operating systems. Disconnecting the local
+  app does not revoke a token on Lichess.
+
+## What's included
 
 ```text
-screenshot
--> board detection and square classification
--> FEN
--> engine analysis
--> best moves, risks, threats, and strategic plans
+screenshot → board detection → 64-square classification
+           → human review of placement and game state
+           → Stockfish → legally replayed variations
+                        ↘ matching games → recorded move comparison
 ```
 
-Planned analysis features:
+| Location | Purpose |
+| --- | --- |
+| `image2pgn/launcher.py` | One-command launch and configuration checks |
+| `image2pgn/webapp.py`, `explanation_api.py` | Local upload API and review/analysis jobs |
+| `image2pgn/board*.py`, `cnn.py`, `orientation.py` | Board geometry and piece recognition |
+| `image2pgn/analyze.py`, `explanations.py` | Engine analysis and verified move explanations |
+| `image2pgn/master_games.py`, `move_comparison.py` | Matching recorded games and move comparison |
+| `image2pgn/web/` | Browser UI, piece SVGs, and fonts |
+| `image2pgn/assets/` | Bundled experimental classifier and its provenance |
+| `desktop/` | Optional Electron popup adapter |
+| `infra/`, `tests/` | Experiments and regression checks |
 
-- Evaluate the current position with a chess engine such as Stockfish.
-- Show candidate moves and evaluation changes.
-- Identify immediate tactical risks such as mate threats, forcing checks,
-  forcing captures, hanging pieces, and engine-detected positional threats.
-- Tag candidate moves with tactical ideas such as checks, captures, forks, pins,
-  mate threats, development, center play, king safety, and heavy-piece activity.
-- Explain practical plans such as opening files, improving piece activity,
-  attacking weak squares, or improving king safety.
+The main UI is `/`; `/explain` remains an alias. The older multi-image workspace
+is preserved at `/workspace`, with a link from the main app. Its confirmed FEN
+can be passed to the explanation screen.
 
-## Engine Analysis
+## Models, engines, and limits
 
-Install or download a UCI engine such as Stockfish. The CLI tries to find
-`stockfish` on `PATH`, `Documents/stockfish/stockfish*.exe`, or
-`./stockfish/stockfish*.exe`. You can also pass the executable path explicitly
-with `--engine`.
+A small experimental PieceCNN checkpoint is included so image upload works in
+a clean checkout. Its SHA-256 and source experiment are recorded in
+[model.json](image2pgn/assets/model.json); see the
+[model notes](image2pgn/assets/README.md). Custom checkpoints must have the
+compatible PieceCNN architecture and class names.
 
-Analyze a known FEN:
+Stockfish is not bundled or downloaded automatically. Choose a binary compatible
+with your CPU from its official distribution. The default uv configuration uses
+CPU PyTorch on Windows/Linux. GPU training is optional and not needed to run the app.
 
-```powershell
-C:\Users\reals\Documents\Workspace\.venv\Scripts\python.exe -m image2pgn analyze-fen `
-  --fen "rnb1k1r1/1p3p1p/2p2p2/1q2p3/p2pP1P1/2bP1P1N/P1P1Q2P/2KR1BNR w - - 0 1" `
-  --engine C:\path\to\stockfish.exe `
-  --depth 14 `
-  --top 5
+- Review every position: alignment, orientation, overlays, unfamiliar themes,
+  piece colors, and small pieces can produce recognition errors.
+- A screenshot cannot reliably establish turn, castling/en-passant rights,
+  move counters, or earlier moves. FEN defaults are not evidence of those facts.
+- Limited-time engine search can change with depth, time, or engine version.
+  Mate scores are not converted into a guaranteed pawn-loss estimate.
+- This is a local prototype, not an internet-facing hosted service. The launcher
+  binds to loopback; existing Host/Origin and session-token checks remain enabled.
+- Images are processed locally and temporary input files are removed. Result
+  crops live in the local session until cancellation/expiry. Optional Masters
+  lookup sends a position query, not the screenshot.
+- New screenshots, DPI/scaling combinations, Linux, and macOS still need user
+  validation. Automated checks and development examples are not general accuracy claims.
+
+## Development and advanced use
+
+```sh
+uv sync --group dev
+uv run pytest tests -q
+uv run python infra/check_javascript.py
+uv build
 ```
 
-Analyze directly from a screenshot:
+The committed `uv.lock` pins the resolved environment. Node.js is needed for
+JavaScript regression checks, not for running the local web app. The check
+runner works on Windows/Linux and creates synthetic inputs for the label-review
+tool; no private training data is required.
 
-```powershell
-C:\Users\reals\Documents\Workspace\.venv\Scripts\python.exe -m image2pgn analyze-image `
-  --image image\chess_img.jpg `
-  --model models\piece_cnn_target_mix.pt `
-  --orientation auto `
-  --device cuda `
-  --threshold 0.5 `
-  --side-to-move w `
-  --depth 14 `
-  --top 5
+Existing CLI recognition/analysis and training commands remain available:
+
+```sh
+uv run python -m image2pgn --help
+uv run python -m image2pgn analyze-fen --fen "FEN" --engine /path/to/stockfish
 ```
 
-One screenshot cannot reveal side-to-move, castling rights, en-passant, or move
-history with certainty. Set `--side-to-move` manually when analyzing screenshots.
-
-Generate a static PNG report with arrows and an analysis panel:
-
-```powershell
-C:\Users\reals\Documents\Workspace\.venv\Scripts\python.exe -m image2pgn analyze-image `
-  --image image\chess_img.jpg `
-  --model models\piece_cnn_target_mix.pt `
-  --orientation auto `
-  --device cuda `
-  --threshold 0.5 `
-  --side-to-move w `
-  --depth 12 `
-  --top 3 `
-  --visual-out output\analysis_chess_img.png
-```
-
-## Setup
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
-
-## Local Web App
-
-Run the upload → FEN review → Stockfish analysis flow locally:
-
-```powershell
-.\.venv\Scripts\python.exe -m image2pgn serve `
-  --model output\ui-negatives-20260910\epoch8.pt `
-  --engine C:\Users\reals\Documents\stockfish\stockfish-windows-x86-64-avx2.exe
-```
-
-Open `http://127.0.0.1:8000`. Uploaded PNG/JPEG files are limited to 10 MiB,
-processed through a temporary file, and deleted after recognition. The page requires
-explicit confirmation of side-to-move and game-history fields before engine analysis.
-
-## Quick Start: Screenshot to FEN
-
-Recommended current model:
-
-```text
-models/piece_cnn_target_mix.pt
-```
-
-Run CNN recognition:
-
-```powershell
-C:\Users\reals\Documents\Workspace\.venv\Scripts\python.exe -m image2pgn fen-cnn `
-  --image image\chess_img.jpg `
-  --model models\piece_cnn_target_mix.pt `
-  --orientation auto `
-  --device cuda `
-  --threshold 0.5
-```
-
-This prints a full FEN with default metadata:
-
-```text
-<piece-placement> w - - 0 1
-```
-
-`--orientation auto` tries both white-bottom and black-bottom board
-interpretations and chooses the more plausible FEN. For the current baseline
-model, do not enable `--infer-color-from-image` by default; the CNN usually
-handles piece color better than the brightness-based fallback.
-
-Optional debug output:
-
-```powershell
-C:\Users\reals\Documents\Workspace\.venv\Scripts\python.exe -m image2pgn fen-cnn `
-  --image image\chess_img.jpg `
-  --model models\piece_cnn_target_mix.pt `
-  --orientation auto `
-  --device cuda `
-  --threshold 0.5 `
-  --debug-dir debug\chess_img
-```
-
-## Legacy Template Matching
-
-The recognizer uses template matching. First teach it a board style from an image
-with a known FEN:
-
-```powershell
-python -m image2pgn learn `
-  --image samples/start.png `
-  --fen "rn1qkbnr/pppbpppp/8/3p4/8/2N5/PPPPPPPP/R1BQKBNR" `
-  --templates templates/default
-```
-
-Then recognize another image using those templates:
-
-```powershell
-python -m image2pgn fen `
-  --image samples/position.png `
-  --templates templates/default
-```
-
-This prints a full FEN with default metadata:
-
-```text
-<piece-placement> w - - 0 1
-```
-
-Use `--placement-only` if you only want the first FEN field.
-
-The template workflow is kept for experimentation, but the CNN workflow is the
-main path for general screenshot recognition.
-
-## Board Orientation
-
-By default the output assumes White is at the bottom. If the image is from
-Black's side, add:
-
-```powershell
---orientation black
-```
-
-## Current Limitations
-
-- The current system outputs FEN, not PGN.
-- PGN reconstruction requires a sequence of positions or move history.
-- One screenshot can support position analysis but cannot uniquely recover the
-  game history.
-- Engine analysis is planned but not implemented yet.
-- For real offline photos, the next steps are stronger board detection,
-  perspective correction, and more target-style data.
-
-## CNN Classifier Workflow
-
-For recognizing new board styles, build a square-level dataset from labeled board
-images, then train a CNN classifier.
-
-Create 64 labeled square crops from a board image:
-
-```powershell
-python -m image2pgn make-dataset `
-  --image image/chess_img.jpg `
-  --fen "rnb1k1r1/1p3p1p/2p2p2/1q2p3/p2pP1P1/2bP1P1N/P1P1Q2P/2KR1BNR" `
-  --orientation black `
-  --out dataset `
-  --split train
-```
-
-Install PyTorch before training:
-
-```powershell
-python -m pip install -r requirements-cnn.txt
-```
-
-Train:
-
-```powershell
-python -m image2pgn train-cnn `
-  --data dataset `
-  --model models/piece_cnn.pt `
-  --epochs 12
-```
-
-Recognize with the trained CNN:
-
-```powershell
-python -m image2pgn fen-cnn `
-  --image image/new_board.jpg `
-  --model models/piece_cnn_target_mix.pt `
-  --orientation auto `
-  --threshold 0.5
-```
-
-`--threshold` uses the CNN softmax confidence. Predictions below the threshold
-are treated as empty squares, which helps reduce false piece detections.
-`--infer-color-from-image` keeps the CNN's piece type prediction but rechecks
-white/black from the square image brightness. Treat it as a fallback, not the
-default for the current baseline model.
-`--orientation auto` runs both white-bottom and black-bottom interpretations,
-then chooses the more plausible FEN by a lightweight chess-position score.
-
-CNN recognition generalizes only as far as the data does. Add labeled examples
-from many board themes, piece sets, colors, and camera conditions.
-
-## Hugging Face YOLO Dataset
-
-The downloaded Hugging Face zip files can be converted directly without fully
-extracting them first:
-
-```powershell
-python -m image2pgn prepare-hf-yolo `
-  --zip chess_yolo_data-20250419T135412Z-001.zip `
-  --zip chess_yolo_data-20250419T135412Z-002.zip `
-  --out dataset_hf `
-  --empty-per-board 8 `
-  --progress-every 500
-```
-
-For a quick smoke test, cap the number of board images:
-
-```powershell
-python -m image2pgn prepare-hf-yolo `
-  --zip chess_yolo_data-20250419T135412Z-001.zip `
-  --zip chess_yolo_data-20250419T135412Z-002.zip `
-  --out dataset_hf_sample `
-  --max-train-images 100 `
-  --max-val-images 20 `
-  --empty-per-board 8
-```
-
-Train from the converted dataset:
-
-```powershell
-python -m image2pgn train-cnn `
-  --data dataset_hf `
-  --model models/piece_cnn.pt `
-  --epochs 12 `
-  --batch-size 64 `
-  --device cpu `
-  --progress-every 100
-```
-
-Evaluate a trained model:
-
-```powershell
-python -m image2pgn eval-cnn `
-  --data dataset_hf `
-  --model models/piece_cnn.pt `
-  --split val `
-  --device cuda
-```
-
-The Hugging Face YOLO class ids are mapped as:
-
-```text
-0 white_pawn, 1 white_knight, 2 white_bishop, 3 white_rook, 4 white_queen, 5 white_king
-6 black_pawn, 7 black_knight, 8 black_bishop, 9 black_rook, 10 black_queen, 11 black_king
-```
-
-## Adding Class-Folder Datasets
-
-Datasets such as Kaggle piece crops can be merged into the same CNN dataset as
-long as images are grouped by class folders. Folder names like `White Pawn`,
-`white_pawn`, `white-pawn`, or `wp` are mapped automatically.
-
-```powershell
-python -m image2pgn import-class-dirs `
-  --input kaggle_chess_data `
-  --out dataset_hf `
-  --split train `
-  --val-ratio 0.1 `
-  --infer-color-from-image
-```
-
-This appends images into `dataset_hf/train/<class>` and
-`dataset_hf/val/<class>`. If the external dataset has no `empty` class, keep the
-empty-square examples from `prepare-hf-yolo`. Use `--infer-color-from-image`
-when the source folders contain piece type only, such as `bishop`, `king`, or
-`pawn`.
-
-## Adding Hugging Face Image Datasets
-
-The ChessVision square-classification dataset provides 13 classes (`wP`, `bK`,
-`xx`, etc.) and can be merged directly:
-
-```powershell
-python -m image2pgn import-hf-dataset `
-  --name S1M0N38/chess-cv-chessvision `
-  --out dataset_hf `
-  --progress-every 500
-```
-
-This dataset is small but useful because it already includes white pieces, black
-pieces, and empty squares in a classification-ready layout.
-
-## Generating Synthetic Style Data
-
-Synthetic data can expand board themes without downloading another labeled
-dataset. It uses an existing class-folder dataset as piece sprites, then renders
-new square crops with varied board colors, coordinates, highlights, brightness,
-blur, and noise.
-
-```powershell
-python -m image2pgn generate-synthetic `
-  --out dataset_synth `
-  --sprites dataset_hf/train `
-  --positions 5000 `
-  --styles chesscom_green,lichess_brown `
-  --split train `
-  --progress-every 250
-```
-
-Available styles:
-
-```text
-chesscom_green, chesscom_brown, lichess_brown, lichess_blue, lichess_gray
-```
-
-For a quick validation set:
-
-```powershell
-python -m image2pgn generate-synthetic `
-  --out dataset_synth `
-  --sprites dataset_hf/train `
-  --positions 500 `
-  --styles chesscom_green,lichess_brown `
-  --split val
-```
-
-Train with both the real/imported dataset and synthetic dataset:
-
-```powershell
-python -m image2pgn train-cnn `
-  --data dataset_hf `
-  --extra-data dataset_synth `
-  --model models/piece_cnn_mix.pt `
-  --epochs 12 `
-  --batch-size 128 `
-  --device cuda `
-  --progress-every 100
-```
-
-# Model History
-
-This document tracks the CNN model experiments for Image2PGN.
-
-## Current Baseline
-
-Use this model:
-
-```text
-models/piece_cnn_target_mix.pt
-```
-
-Recommended inference command:
-
-```powershell
-C:\{Your_Workspace}\.venv\Scripts\python.exe -m image2pgn fen-cnn `
-  --image image\chess_img.jpg `
-  --model models\piece_cnn_target_mix.pt `
-  --orientation black `
-  --device cuda `
-  --threshold 0.5
-```
-
-Important: do **not** use `--infer-color-from-image` with this model by default.
-The model already learned piece color well enough, and the brightness-based
-color postprocess flipped some white pieces to black.
-
-## Final Sample Result
-
-Input:
-
-```text
-image/chess_img.jpg
-```
-
-Prediction:
-
-```text
-rnb1k1r1/1p3p1p/2p2p2/1q2p3/p2pP1P1/2bP1P1N/P1P1Q2P/2KR1BNR w - - 0 1
-```
-
-This matched the expected FEN for the sample image.
-
-## Model Timeline
-
-### `piece_cnn.pt`
-
-Initial CNN model trained on the first converted dataset.
-
-Result:
-
-- Model saved successfully.
-- Validation looked reasonable on the dataset.
-- Actual sample image still failed badly because of domain gap.
-
-Main issue:
-
-```text
-The model saw dataset styles, but not enough target chess.com-like board crops.
-```
-
-### `piece_cnn_v2.pt`
-
-Trained after adding more data, including:
-
-- Hugging Face YOLO chess board crops
-- Kaggle piece crop data
-- Hugging Face ChessVision square classification data
-
-Validation:
-
-```text
-dataset_hf/val accuracy: 0.9845
-```
-
-But the real sample image was still poor. The validation set did not represent
-the target screenshot style well enough.
-
-### `piece_cnn_synth.pt`
-
-Trained only on synthetic data generated from `dataset_hf/train` sprites.
-
-Validation:
-
-```text
-dataset_synth/val accuracy: 0.9991
-dataset_hf/val accuracy: 0.7543
-```
-
-Result:
-
-- Excellent on synthetic data.
-- Worse on original validation and actual sample image.
-
-Main issue:
-
-```text
-Synthetic-only training caused the model to overfit synthetic artifacts and
-forget the broader dataset distribution.
-```
-
-### `piece_cnn_mix.pt`
-
-Trained with:
-
-```text
-dataset_hf + dataset_synth
-```
-
-Validation:
-
-```text
-dataset_hf/val accuracy:    0.8161
-dataset_synth/val accuracy: 0.8469
-combined val accuracy:      0.8440
-```
-
-Result:
-
-- Still not good enough.
-- Empty squares were frequently misclassified as black knight or black king.
-
-Main issue:
-
-```text
-The synthetic data generated from generic sprites introduced confusing empty
-and coordinate/background artifacts.
-```
-
-### `piece_cnn_target_mix.pt`
-
-Current best model.
-
-Trained with:
-
-```text
-dataset_hf + dataset_synth_target
-```
-
-Where `dataset_synth_target` was generated from `dataset/train`, which came from
-the target sample image style.
-
-Generation command:
-
-```powershell
-C:\{Your_Workspace}\.venv\Scripts\python.exe -m image2pgn generate-synthetic `
-  --out dataset_synth_target `
-  --sprites dataset\train `
-  --positions 500 `
-  --styles chesscom_green,chesscom_brown,lichess_brown,lichess_blue,lichess_gray `
-  --split train `
-  --progress-every 50
-
-C:\{Your_Workspace}\.venv\Scripts\python.exe -m image2pgn generate-synthetic `
-  --out dataset_synth_target `
-  --sprites dataset\train `
-  --positions 100 `
-  --styles chesscom_green,chesscom_brown,lichess_brown,lichess_blue,lichess_gray `
-  --split val `
-  --seed 123 `
-  --progress-every 25
-```
-
-Training command:
-
-```powershell
-C:\{Your_Workspace}\.venv\Scripts\python.exe -m image2pgn train-cnn `
-  --data dataset_hf `
-  --extra-data dataset_synth_target `
-  --model models\piece_cnn_target_mix.pt `
-  --epochs 12 `
-  --batch-size 128 `
-  --device cuda `
-  --progress-every 100
-```
-
-Validation:
-
-```text
-split=val total=7047 correct=7038 accuracy=0.9987
-```
-
-Per-class highlights:
-
-```text
-empty:        1.0000
-white_rook:   1.0000
-black_pawn:   1.0000
-black_queen:  1.0000
-black_king:   0.9922
-white_queen:  0.9891
-```
-
-Final sample result matched the expected FEN when `--infer-color-from-image` was
-not used.
-
-## Lessons Learned
-
-1. Dataset validation accuracy is not enough if the validation set does not
-   represent the target screenshot style.
-2. Synthetic data is useful, but sprite source matters.
-3. Synthetic data generated from generic sprites did not help enough.
-4. Synthetic data generated from the target-style crop source worked much better.
-5. Brightness-based color postprocessing is useful as a fallback, but should not
-   be enabled by default once the CNN learns color reliably.
-6. The current best inference path is CNN-only color prediction with
-   `--threshold 0.5`.
-
-## Next Steps
-
-### Joint versus factorized outputs
-
-`infra/compare_heads.py` compares a new 13-class head against independent
-occupancy (1), type (6), and side (2) outputs on the same pretrained features.
-Both output configurations are newly initialized. They receive the same
-28,598-image manifest, seed, eight epochs, optimizer and per-epoch sample order.
-The generator and recorded v3 manifest from the color experiment are required.
-
-```powershell
-python infra/compare_heads.py --data PATH_TO_COLOR_DATA --manifest PATH_TO_V3_METADATA_JSON --path-base PATH_TO_ORIGINAL_COMMAND_CWD --init models/piece_cnn_target_mix.pt --labels PATH_TO_LABELS_JSON --images PATH_TO_SCREENSHOTS --out output/head-comparison
-```
-
-Use the CUDA training environment described below. This experiment uses the
-same dependencies in `requirements-color-training.txt`. It checks input hashes
-and requires a fresh output path. Kaggle's 50 replay samples receive a type-only
-loss by marginalizing over both sides; their pseudo-side labels are not used.
-Kaggle's 52 validation samples are excluded from full-class checkpoint selection
-and evaluated only for conditional type recognition. The remaining selection
-sets are spatial synthetic validation and ChessVision validation.
-
-The factorized model returns normalized log probabilities in the existing
-13-class order, constructed from occupancy, type and side probabilities. It
-assumes conditional independence of type and side given shared features.
-Both arms use the same partial-label NLL plus a 0.25 side loss on known-side,
-occupied examples. This differs from training two separate CNNs in sequence.
-
-Outputs include separate checkpoints, epoch-average training losses,
-validation histories, per-epoch shuffle hashes and screenshot predictions.
-These checkpoints use `compare_heads.restore(path, device)` and are experimental:
-they are not supported by the existing `fen-cnn --model` loader. Do not replace
-the default model file with them. The experiment reuses development images and
-an already inspected synthetic evaluation set; it does not establish independent
-generalization performance. Historical pseudo-label exposure in the initial
-backbone also remains. No claim of architecture superiority should be made
-from one seed and a fixed eight-epoch budget alone.
-
-### Reproducible color fine-tuning experiment (2026-09-07)
-
-The new experiment keeps the existing 317,965-parameter, 96px, 13-class CNN.
-It adds design-disjoint synthetic data and a color auxiliary loss obtained by
-grouping the existing white/black logits. There is no extra inference head.
-Candidate weights are separate from `piece_cnn_target_mix.pt`; do not replace
-the default based on the development screenshots alone.
-
-In a separate Python 3.12 environment on NVIDIA CUDA hardware:
-
-```powershell
-python -m pip install torch==2.7.1 --index-url https://download.pytorch.org/whl/cu128
-python -m pip install -r requirements.txt -r requirements-color-training.txt
-python infra/robust_synthetic.py --out output/color-data --fetch
-python infra/train_color.py --data output/color-data --replay dataset_hf --replay-limit 1000 --extra-replay dataset_synth_target --init models/piece_cnn_target_mix.pt --out output/color-run
-python infra/evaluate_color.py --baseline models/piece_cnn_target_mix.pt --candidate output/color-run/best.pt --data output/color-data --labels PATH_TO_LABELS_JSON --images PATH_TO_SCREENSHOTS --out output/color-run/comparison.json
-```
-
-The generator downloads a pinned Lichess revision and records URLs, hashes,
-authors and licenses in `assets/manifest.json` with the original `COPYING.md`.
-Chessnut (Apache-2.0), fantasy/celtic (MIT) are training designs; spatial (MIT)
-is validation; rhosgfx (CC0-1.0) is the test design. Images are generated after
-this split. Historical training exposure of the old checkpoint is unknown.
-Asset license/source references: [Lichess COPYING](https://github.com/lichess-org/lila/blob/e053316a1a1816edbc83d220d8439ccad60b5636/COPYING.md).
-
-The trainer samples old training data for replay, removes exact replay
-train/validation duplicates, records the selected files and hashes, fixes the
-seed, and saves the epoch with the lowest mean cross entropy across synthetic
-and legacy validation (including the untrained baseline as epoch 0).
-Check `metadata.json` and `history.json` before using `best.pt`: selection may
-retain epoch 0 if training does not help. CLI outputs may not overwrite a run.
-
-Evaluate piece color, type, missed pieces, false pieces and whole-board FEN
-separately. Color errors use all ground-truth occupied squares as denominator;
-misses are reported separately. Screenshot evaluation uses the same grid,
-threshold 0.5, background filter, and orientation heuristic for both models.
-Fixed-orientation tile accuracy is separate from automatic-orientation exact
-board accuracy. Results are exploratory: the same 15 screenshots were already
-used during development, and the synthetic test was inspected after the first
-training attempt. New real screenshots with verified labels are still needed.
-
-The older validation number below is historical, not an independent benchmark:
-exact duplicate images were found across the old train/validation folders.
-
-- Add more target-style screenshots with known FEN.
-- Generate more `dataset_synth_target` from those screenshots.
-- Keep a small target validation set separate from training data.
-- Evaluate future models on:
-
-```text
-dataset_hf/val
-dataset_synth_target/val
-real target screenshots
-```
-
-
-
-### Offline label review
-
-Generate an offline page and sibling PNG folder for the 50 replay samples with Python (standard library only):
-
-    python infra/build_label_review.py --audit <audit.json> --output <review.html>
-
-Keep the HTML and its generated images folder together. Open the HTML, choose a side or unresolved, and export the review JSON. Browser storage is temporary; keep the downloaded JSON. Source-backed confirmation requires a reviewer name and evidence. Visual proposals are not training approvals. The page never changes the dataset or starts training.
-
-JavaScript logic checks (Node.js, no dependencies):
-
-    node tests/test_label_review.cjs <review.html>
-
-These checks use a DOM stub; actual browser download/import must also be checked manually.
-
-
-
-### Audited replay exclusion experiment
-
-infra/retrain_exclusion.py reruns the fixed eight-epoch CNN fine-tuning after excluding exactly 50 audited replay images. It validates manifest and image hashes, saves epoch-average losses, preserves the epoch-8 checkpoint, and evaluates the previous v3 candidate and exclusion candidate with identical preprocessing. Run with --help for required paths. Local run artifacts: output/exclude50-20260910. The default model is unchanged.
-
-
-### UI hard-negative experiment
-
-Generate procedural search, comment, and text overlays on empty tiles:
-
-    python infra/ui_negatives.py --out <new-ui-data-dir>
-
-Add --hardneg <new-ui-data-dir> to the retrain_exclusion.py command. This appends 1200 empty tiles to the 28548-image exclusion dataset; 300 separately seeded synthetic UI tiles are evaluated only after the fixed epoch-8 checkpoint is saved. No evaluation screenshot crops are used for training. Check false positives and missed real pieces together. Run artifacts and the candidate are preserved locally under output/ui-negatives-20260910; the default model is unchanged.
-
-
-### Central-brightness feature comparison
-
-infra/center_fusion.py compares fresh control and feature-augmented CNNs using the same replay manifest, initial checkpoint, epoch-specific data order and dropout seeds. Five scalar features (central 25/40 percent median brightness, border median, and two differences) add 65 parameters to the 13-class output layer. Added weights start at zero to preserve initial predictions. Both models are fixed at epoch 8. The 49 user visual choices are not training labels.
-
-Use --help for input paths. Checkpoints use the experimental center_fusion.restore loader; they are not compatible with the standard CLI model loader. The existing default model is unchanged.
-
-
-
-### CNN automatic board orientation
-
-`fen-cnn` and `analyze-image` with `--orientation auto` now try coordinate
-labels first, then estimate direction from pawn distribution, back-rank pieces,
-and basic position validity with either side to move. At least three distinct
-labels on one axis must agree, with no opposing coordinate evidence.
-
-The optional local Windows OCR adapter uses installed OCR languages and reads
-inside-left rank labels and inside-bottom file labels. It does not install
-languages or change PowerShell settings. Missing OCR, unreadable labels, or
-unsupported coordinate layouts fall back to position estimation. OCR coverage
-is currently limited; neither OCR agreement nor position scores guarantee truth.
-
-Output reports `source` and `status`: `coordinate_supported`, `estimated`, or
-`uncertain`. Python `RecognitionResult.orientation_details` preserves both
-placement candidates and the evidence. Position scores are not probabilities.
-Use `--orientation white` or `--orientation black` to override auto without OCR.
-This determines the side at the bottom, not the side to move, castling rights,
-or game history. CNN weights and board detection are unchanged by this feature.
-
-### Low-confidence review mode
-
-`--low-confidence-policy review` retains low-confidence pieces when total
-nonempty probability meets the threshold, and prints review warnings.
-Python `RecognitionResult.review_squares` preserves screen coordinates and scores.
-This experimental mode may restore UI false positives. Default `empty` preserves
-previous suppression. A single pawn no longer supplies the home-rank orientation
-prior. Two consistent coordinates may guide an uncertain position as estimated;
-three still provide stronger coordinate-supported status. FEN history is unknown.
-
-### Board detection diagnostics
-
-Python `warp_board_result` returns the crop plus original bounds/corners, actual
-method (`grid`, `contour`, `center`), fallback reason and review status.
-`warp_board` remains compatible. CNN results include `board_details`; fallback
-paths print a review warning. `--debug-dir` also writes `board_detection.json`.
-A grid candidate is not proof of correctness. Contour/center paths require review;
-this release reports the condition but does not block FEN or engine execution.
-
-### Offline board-corner review
-
-Create a self-contained HTML page with the original image, editable corners,
-a projected 8x8 grid, and a rectified preview:
-
-```powershell
-python -m image2pgn board-review --image screenshot.jpg --out board-review.html
-```
-
-Open the page, move the four corners in screen TL/TR/BR/BL order, confirm that
-the complete board boundary is visible, and download the corner JSON. Numeric
-fields and arrow keys are supported (Shift moves 10 pixels). Reset and JSON
-import are available; editing clears confirmation. The incomplete-board switch
-blocks export. Hidden pieces cannot be recovered by adjusting boundaries.
-
-Apply the downloaded JSON to recognition:
-
-```powershell
-python -m image2pgn fen-cnn --image screenshot.jpg --model model.pt --orientation auto --threshold 0.5 --background-filter --board-corners screenshot-corners.json
-```
-
-The correction must match the original image hash and dimensions. Unconfirmed,
-incomplete, out-of-bounds, crossed or degenerate corners are rejected. Results
-record `method=manual` and `status=boundary_reviewed`; these refer only to the
-boundary, not piece accuracy or game-state metadata. Without `--board-corners`,
-the previous detection path is unchanged. The HTML performs local preview and
-coordinate export only; CNN inference runs through the command above.
-
-`analyze-image --visual-out` now reuses the exact recognized board pixels and
-orientation, including `--board-corners`, instead of detecting the board again.
-The renderer draws on a copy. Python callers can request `retain_board_image=True`
-and pass `result.board_image` to `save_analysis_overlay(..., board_image=...)`.
-This opt-in array is not JSON serializable; omit it from metadata exports.
-Without retention, existing metadata results keep `board_image=None`.
-
-## Opt-in full-grid selection
-
-Use `--board-detector grid-v2` with `fen-cnn` or `analyze-image` to validate
-checker parity, outer rows/columns and grid-line spacing before choosing a crop.
-A validated existing grid crop is preserved to avoid resampling regressions;
-otherwise multiscale candidates are checked and the largest valid board is chosen.
-A strong grid with an occluded border, competing main boards, or contour/center
-fallback remains marked `requires_review`. Scores are diagnostics, not probabilities.
-The default remains `legacy`; `grid` remains available unchanged. Manual
-`--board-corners` overrides all automatic detection. This option does not change
-CNN weights, orientation, or FEN history fields. Severe perspective, incomplete
-boards and ambiguous checker-pattern UI still need review.
+Historical training commands and development measurements are preserved in
+[archived workflows](docs/legacy-workflows.md) and [MODEL_HISTORY.md](MODEL_HISTORY.md).
+They are not the current quick start or a performance guarantee. The optional
+desktop popup is documented in [desktop/README.md](desktop/README.md).
+
+## Troubleshooting
+
+| Symptom | What to check |
+| --- | --- |
+| Stockfish not found | Extract the download and pass the executable with `--engine`; a folder/ZIP is not an executable. |
+| Engine cannot start | Select a build compatible with your OS/CPU; run `uv run chesslens --doctor`. |
+| Model missing/checksum mismatch | Restore `image2pgn/assets/` from the repository, or specify your own compatible model. |
+| Port already in use | Stop the other local instance or use `--port 8787`. |
+| Incorrect board/capture options | Correct pieces, turn, and game-state fields before confirming. |
+| Masters unavailable | Offline catalog/analysis still work; external lookup needs a valid user-entered token and network access. |
+
+Third-party artwork and font notices are retained in
+[pieces/NOTICE.txt](image2pgn/web/pieces/NOTICE.txt),
+[pieces/COPYING.txt](image2pgn/web/pieces/COPYING.txt), and
+[Pretendard-LICENSE.txt](image2pgn/web/fonts/Pretendard-LICENSE.txt).
+Stockfish and python-chess retain their own licenses; consult their distributions
+when redistributing components. No project-wide license is added by this cleanup.

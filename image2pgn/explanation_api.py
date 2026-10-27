@@ -191,7 +191,7 @@ def install_explanation_api(app, recognize_payload, web_dir, popup=None, analyse
 
     @app.middleware('http')
     async def local_security(request: Request, call_next):
-        if request.url.path.startswith('/api/') or request.url.path == '/explain':
+        if request.url.path.startswith('/api/') or request.url.path in {'/', '/explain', '/workspace'}:
             host = urlsplit('http://' + request.headers.get('host', '')).hostname
             # TestClient is in-process; live requests must use a loopback Host AND peer.
             peer = request.client.host if request.client else ''
@@ -210,7 +210,7 @@ def install_explanation_api(app, recognize_payload, web_dir, popup=None, analyse
                 if not secrets.compare_digest(token, store.token):
                     return Response('Session token required', status_code=401)
         response = await call_next(request)
-        if request.url.path.startswith('/api/explanations') or request.url.path == '/explain':
+        if request.url.path.startswith('/api/explanations') or request.url.path in {'/', '/explain', '/workspace'}:
             response.headers['Cache-Control'] = 'no-store'
             response.headers['Referrer-Policy'] = 'no-referrer'
             response.headers['X-Content-Type-Options'] = 'nosniff'

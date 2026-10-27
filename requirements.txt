@@ -1,26 +1,2 @@
-numpy>=1.26
-opencv-python>=4.9
-pytest>=8.0
-chess>=1.11
-fastapi>=0.115
-uvicorn>=0.30
-python-multipart>=0.0.12
-httpx>=0.27
-# Reproducible color-training extras: requirements-color-training.txt
-# Joint/factorized head comparison reuses the same training extras.
-# Offline label review uses Python standard library only.
-# Replay exclusion experiment reuses the color-training dependencies.
-# Procedural UI negatives reuse NumPy and OpenCV; no additional dependencies.
-# Center-brightness fusion reuses existing PyTorch, NumPy and OpenCV dependencies.
-# Board orientation reuses chess/OpenCV/NumPy; Windows OCR is an optional OS component.
-# Board diagnostics use existing dependencies and standard-library dataclasses.
-# Offline corner review reuses OpenCV/NumPy; browser code has no external dependencies.
-# Multiscale board proposals reuse OpenCV/NumPy; no new dependencies.
-# Full-grid validation and candidate selection reuse OpenCV/NumPy.
-# Local web MVP uses FastAPI/Uvicorn; uploads are processed in temporary files.
-
-# Bounded image header validation for explanation uploads.
-Pillow>=10.0
-# Historical master-game search reuses chess, httpx and the Python standard library.
-# Local Lichess credentials use standard-library ctypes and Windows DPAPI; no new dependency.
-# Historical move comparisons reuse python-chess and Stockfish; no new dependency.
+# Compatibility entry point. Recommended: uv sync (CPU PyTorch source is in pyproject.toml).
+-e .

@@ -1,18 +1,22 @@
 # ChessLens companion popup
 
-Start the existing Python environment with a local PieceCNN model and Stockfish:
+For the integrated browser app, follow the [main quick start](../README.md).
+The bundled model is included; Stockfish is installed separately. To run the
+headless companion service for the optional popup:
 
 ```powershell
-.\.venv\Scripts\python.exe -m image2pgn.companion --port 8771
+uv run python -m image2pgn.companion --port 8771 --engine "C:\tools\stockfish\stockfish.exe"
 ```
 
 Open `http://127.0.0.1:8771/explain` for standalone image upload, board editing,
-explicit game-state review, and verified move playback. The old `/` desk also
+explicit game-state review, and verified move playback. `/` opens the same UI.
+The older `/workspace` desk also
 links a confirmed FEN to this page. No LLM API key is needed by ChessLens.
 
 For a native transparent popup, set `CHESSLENS_ELECTRON_PATH` to an existing
-Electron executable. The default reuses the sibling shared-brain Frieren runtime.
-No Electron package is downloaded by this module. With the service running:
+Electron executable. An existing sibling shared-brain Frieren runtime is a development fallback,
+not a dependency included in this checkout. Set an explicit executable path
+for standalone use. No Electron package is downloaded by this module. With the service running:
 
 ```powershell
 & $env:CHESSLENS_ELECTRON_PATH desktop/main.cjs

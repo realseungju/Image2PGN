@@ -1,0 +1,20 @@
+name: ChessLens checks
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+      - run: uv sync --frozen --group dev
+      - run: uv run --no-sync pytest tests -q
+      - name: JavaScript regression checks
+        run: uv run --no-sync python infra/check_javascript.py
+      - run: uv build

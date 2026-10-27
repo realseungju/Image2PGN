@@ -1,0 +1,24 @@
+{
+  "name": "PieceCNN UI-negative experimental epoch8",
+  "source_experiment": "ui-negatives-20260910/epoch8.pt",
+  "source_sha256": "3d2e25994177ead99fc3a623866194c8992757f0d6a8a178c8f56c9144aa0b45",
+  "sha256": "cc4809a530c44739b432a0dd7b1498aedd8b071e9d525f483aebc5f3ee21eae5",
+  "input_size": 96,
+  "class_names": [
+    "empty",
+    "white_pawn",
+    "white_knight",
+    "white_bishop",
+    "white_rook",
+    "white_queen",
+    "white_king",
+    "black_pawn",
+    "black_knight",
+    "black_bishop",
+    "black_rook",
+    "black_queen",
+    "black_king"
+  ],
+  "packaged": "2026-10-27",
+  "notes": "Experimental, review required; no new independent accuracy claim."
+}

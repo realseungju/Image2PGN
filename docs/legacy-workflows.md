@@ -93,7 +93,7 @@ with `--engine`.
 Analyze a known FEN:
 
 ```powershell
-C:\Users\reals\Documents\Workspace\.venv\Scripts\python.exe -m image2pgn analyze-fen `
+.\.venv\Scripts\python.exe -m image2pgn analyze-fen `
   --fen "rnb1k1r1/1p3p1p/2p2p2/1q2p3/p2pP1P1/2bP1P1N/P1P1Q2P/2KR1BNR w - - 0 1" `
   --engine C:\path\to\stockfish.exe `
   --depth 14 `
@@ -103,7 +103,7 @@ C:\Users\reals\Documents\Workspace\.venv\Scripts\python.exe -m image2pgn analyze
 Analyze directly from a screenshot:
 
 ```powershell
-C:\Users\reals\Documents\Workspace\.venv\Scripts\python.exe -m image2pgn analyze-image `
+.\.venv\Scripts\python.exe -m image2pgn analyze-image `
   --image image\chess_img.jpg `
   --model models\piece_cnn_target_mix.pt `
   --orientation auto `
@@ -120,7 +120,7 @@ history with certainty. Set `--side-to-move` manually when analyzing screenshots
 Generate a static PNG report with arrows and an analysis panel:
 
 ```powershell
-C:\Users\reals\Documents\Workspace\.venv\Scripts\python.exe -m image2pgn analyze-image `
+.\.venv\Scripts\python.exe -m image2pgn analyze-image `
   --image image\chess_img.jpg `
   --model models\piece_cnn_target_mix.pt `
   --orientation auto `
@@ -147,7 +147,7 @@ Run the upload → FEN review → Stockfish analysis flow locally:
 ```powershell
 .\.venv\Scripts\python.exe -m image2pgn serve `
   --model output\ui-negatives-20260910\epoch8.pt `
-  --engine C:\Users\reals\Documents\stockfish\stockfish-windows-x86-64-avx2.exe
+  --engine C:\tools\stockfish\stockfish.exe
 ```
 
 Open `http://127.0.0.1:8000`. Uploaded PNG/JPEG files are limited to 10 MiB,
@@ -165,7 +165,7 @@ models/piece_cnn_target_mix.pt
 Run CNN recognition:
 
 ```powershell
-C:\Users\reals\Documents\Workspace\.venv\Scripts\python.exe -m image2pgn fen-cnn `
+.\.venv\Scripts\python.exe -m image2pgn fen-cnn `
   --image image\chess_img.jpg `
   --model models\piece_cnn_target_mix.pt `
   --orientation auto `
@@ -187,7 +187,7 @@ handles piece color better than the brightness-based fallback.
 Optional debug output:
 
 ```powershell
-C:\Users\reals\Documents\Workspace\.venv\Scripts\python.exe -m image2pgn fen-cnn `
+.\.venv\Scripts\python.exe -m image2pgn fen-cnn `
   --image image\chess_img.jpg `
   --model models\piece_cnn_target_mix.pt `
   --orientation auto `

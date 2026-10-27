@@ -1,0 +1,6 @@
+include README.md README.ko.md MODEL_HISTORY.md uv.lock .python-version
+recursive-include docs *.md *.png
+recursive-include desktop *.md *.cjs
+recursive-include infra *.py *.html
+recursive-include tests *.py *.cjs
+include image/chess_img4.png

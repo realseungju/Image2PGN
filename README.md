@@ -17,6 +17,16 @@ The walkthrough uses prerecorded examples. The application below performs local
 recognition and analysis. Its explanation UI currently uses Korean labels; this
 README includes their English meaning.
 
+<details>
+<summary>Actual local app preview</summary>
+
+![Reviewed screenshot position and one replayed Stockfish move](docs/images/web-app.png)
+
+A real run using the included example. Scores and continuations can change with
+engine version and search time.
+
+</details>
+
 ## Quick start
 
 You need [uv](https://docs.astral.sh/uv/getting-started/installation/) and a

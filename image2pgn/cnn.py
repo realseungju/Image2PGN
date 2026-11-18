@@ -236,10 +236,19 @@ def recognize_fen_cnn_result(
                 if infer_color_from_image and class_name != "empty" and not coverage:
                     color_evidence = piece_color_evidence(square)
                     color = color_evidence["color"]
-                    if color and color != class_name.split("_", 1)[0]:
+                    predicted_side = class_name.split("_", 1)[0]
+                    if color and color != predicted_side:
                         class_name = f"{color}_{class_name.split('_', 1)[1]}"
                         hint = hint or {"reason": "color_contrast"}
                         hint.update(color_corrected=True, color_evidence=color_evidence)
+                    elif low_confidence_policy == "review" and not color:
+                        contrast_side = color_evidence.get("contrast_side")
+                        if contrast_side and contrast_side != predicted_side:
+                            hint = hint or {"reason": "color_conflict"}
+                            hint.update(color_evidence=color_evidence)
+                # Either orientation puts the promotion ranks on the two outer rows.
+                if low_confidence_policy == "review" and row_index in (0, 7) and class_name.endswith("_pawn"):
+                    hint = hint or {"reason": "back_rank_pawn"}
                 if hint is not None:
                     review_squares.append({"screen_row": row_index, "screen_col": col_index,
                                            "class_name": class_names[index],
@@ -485,15 +494,17 @@ def piece_color_evidence(square: np.ndarray) -> dict:
         [gray[y:y + 8, x:x + 8].reshape(-1) for y in (4, 68) for x in (4, 68)])))
     contrast = body_brightness - background_brightness
     saturation = float(np.median(cv2.cvtColor(tile, cv2.COLOR_BGR2HSV)[:, :, 1][interior]))
-    color = None
-    if saturation <= 60:
-        if body_brightness <= 120 and contrast <= -18:
-            color = "black"
-        elif body_brightness >= 180 and contrast >= 18:
-            color = "white"
+    contrast_side = None
+    if body_brightness <= 120 and contrast <= -18:
+        contrast_side = "black"
+    elif body_brightness >= 180 and contrast >= 18:
+        contrast_side = "white"
+    # Tinted bodies can prompt review but cannot justify changing the piece.
+    color = contrast_side if saturation <= 60 else None
     return {"color": color, "reason": "body_background_contrast" if color else "ambiguous_contrast",
             "body_brightness": body_brightness, "background_brightness": background_brightness,
-            "contrast": contrast, "body_saturation": saturation, "body_pixels": int(interior.sum())}
+            "contrast": contrast, "contrast_side": contrast_side,
+            "body_saturation": saturation, "body_pixels": int(interior.sum())}
 
 
 def infer_piece_color_from_square(square: np.ndarray) -> str | None:

@@ -66,3 +66,33 @@ def test_confident_wrong_color_is_reviewed_without_changing_kind_or_occupancy(mo
     assert hint['proposed_class_name'] == 'black_rook'
     assert hint['reason'] == 'color_contrast' and hint['color_corrected']
     assert result.board_image is board
+
+
+def test_review_marks_tinted_color_conflict_and_back_rank_pawns(monkeypatch, tmp_path):
+    board = np.full((640, 640, 3), 218, dtype=np.uint8)
+    for row, col in [(0, 1), (3, 2), (4, 3), (7, 4)]:
+        tile = board[row*80:(row+1)*80, col*80:(col+1)*80]
+        # Green tint conflicts with white, while light blue agrees with white.
+        body = (30, 100, 30) if row == 3 else (255, 253, 150)
+        tile[20:64, 25:55] = body
+
+    class Model(torch.nn.Module):
+        def forward(self, tensor):
+            occupied = tensor.max() - tensor.min() > .25
+            return torch.tensor([[0., 20.]] if occupied else [[20., 0.]])
+
+    monkeypatch.setattr(torch, 'load', lambda *a, **k: dict(class_names=['empty', 'white_pawn'], model_state={}))
+    monkeypatch.setattr(cnn, 'PieceCnn', lambda **k: Model())
+    monkeypatch.setattr(cnn, 'load_image', lambda *a: board)
+    monkeypatch.setattr(cnn, 'warp_board_result', lambda *a, **k: BoardDetectionResult(board, dict(requires_review=False)))
+    def recognize(policy):
+        return cnn.recognize_fen_cnn_result(tmp_path/'x.png', tmp_path/'model.pt', device='cpu',
+                                            infer_color_from_image=True, low_confidence_policy=policy)
+
+    review = recognize('review')
+    assert {(s['screen_row'], s['screen_col']): s['reason'] for s in review.review_squares} == {
+        (0, 1): 'back_rank_pawn', (3, 2): 'color_conflict', (7, 4): 'back_rank_pawn'}
+    legacy = recognize('empty')
+    assert legacy.review_squares == ()
+    assert legacy.placement == review.placement
+    assert review.placement.count('P') == 4

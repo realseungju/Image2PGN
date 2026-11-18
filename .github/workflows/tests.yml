@@ -19,3 +19,5 @@ jobs:
       - name: JavaScript regression checks
         run: uv run --no-sync python infra/check_javascript.py
       - run: uv build
+      - name: Build end-user ZIP from this commit
+        run: uv run --no-sync python infra/build_release.py

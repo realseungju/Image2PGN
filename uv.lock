@@ -337,7 +337,7 @@ sdist = { url = "https://files.pythonhosted.org/packages/93/09/7d04d7581ae3bb8b5
 
 [[package]]
 name = "chesslens"
-version = "0.2.0"
+version = "0.2.1"
 source = { editable = "." }
 dependencies = [
     { name = "chess" },

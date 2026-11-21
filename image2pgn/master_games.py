@@ -95,6 +95,35 @@ def match_game(game, key):
     return {**{k: v for k, v in game.items() if k != 'position_keys'}, 'match_plies': plies}
 
 
+def render_pgn(record, through_ply=None):
+    steps = record['steps']
+    end = len(steps) if through_ply is None else through_ply
+    game = chess.pgn.Game()
+    game.headers.update(Event=record['event'], Site=record['site'], Date=record['date'],
+                        Round=record['round'], White=record['white']['name'], Black=record['black']['name'],
+                        Result=record['result'] if end == len(steps) else '*',
+                        Source=record['sources'][0]['url'])
+    node = game
+    for step in steps[:end]:
+        node = node.add_main_variation(chess.Move.from_uci(step['uci']))
+    return game.accept(chess.pgn.StringExporter(variations=False, comments=False)) + '\n'
+
+
+def ordered_matches(keys, wanted):
+    """Return matched prefix length and all possible end plies for that prefix."""
+    earliest = -1
+    previous = None
+    endpoints = []
+    for index, key in enumerate(wanted):
+        if key == previous:
+            continue  # Consecutive still frames impose no extra move.
+        positions = [ply for ply in range(earliest + 1, len(keys)) if keys[ply] == key]
+        if not positions:
+            return index, []
+        earliest, endpoints, previous = positions[0], positions, key
+    return len(wanted), endpoints
+
+
 class RemoteFailure(Exception):
     def __init__(self, status, message):
         self.status, self.message = status, message
@@ -144,16 +173,62 @@ class MasterGames:
             reached = record['root_fen'] if through_ply == 0 else steps[through_ply - 1]['after_fen']
             if position_key(chess.Board(reached)) != position_key(checked_board(fen)):
                 raise ValueError('확인한 장면과 일치하는 시점을 선택하세요.')
-        end = len(steps) if through_ply is None else through_ply
-        game = chess.pgn.Game()
-        game.headers.update(Event=record['event'], Site=record['site'], Date=record['date'],
-                            Round=record['round'], White=record['white']['name'], Black=record['black']['name'],
-                            Result=record['result'] if end == len(steps) else '*',
-                            Source=record['sources'][0]['url'])
-        node = game
-        for step in steps[:end]:
-            node = node.add_main_variation(chess.Move.from_uci(step['uci']))
-        return game.accept(chess.pgn.StringExporter(variations=False, comments=False)) + '\n'
+        return render_pgn(record, through_ply)
+
+    def lookup_sequence(self, fens, remote_frame=None):
+        keys = []
+        for index, fen in enumerate(fens, 1):
+            try:
+                if len(fen.split()) != 6:
+                    raise ValueError('차례와 특수 권리를 포함한 전체 FEN이 필요합니다.')
+                keys.append(position_key(checked_board(fen)))
+            except ValueError as exc:
+                raise ValueError(f'{index}번째 장면의 판을 확인하세요. {exc}') from None
+        fetched = None
+        if remote_frame is not None:
+            if not 0 <= remote_frame < len(keys):
+                raise ValueError('마스터 DB를 조회할 장면을 선택하세요.')
+            fetched = self.lookup(fens[remote_frame], remote=True)
+
+        records = {game['id']: game for game in self.catalog}
+        statuses = []
+        locked = self.lock.acquire(blocking=False)
+        try:
+            for index, key in enumerate(keys):
+                cached = self.cache.get(key) if locked else None
+                status = 'not_requested' if locked else 'busy'
+                if cached and cached[0] > self.clock():
+                    result = cached[1]
+                    status = result['remote_status']
+                    for game in result['games']:
+                        records.setdefault(game['id'], game)
+                if index == remote_frame:
+                    status = fetched['remote_status']
+                statuses.append(status)
+        finally:
+            if locked:
+                self.lock.release()
+
+        games = []
+        longest = 0
+        for record in records.values():
+            positions = record.get('position_keys')
+            if positions is None:  # Remote cache stores the public view of the full game.
+                positions = [position_key(chess.Board(record['root_fen']))]
+                positions.extend(position_key(chess.Board(step['after_fen'])) for step in record['steps'])
+            count, endpoints = ordered_matches(positions, keys)
+            longest = max(longest, count)
+            if endpoints:
+                games.append({**{k: v for k, v in record.items() if k != 'position_keys'},
+                              'match_plies': endpoints})
+        return dict(games=games, catalog_size=len(self.catalog), remote_statuses=statuses,
+                    first_unmatched=None if games else longest + 1)
+
+    def sequence_game(self, fens, game_id):
+        for game in self.lookup_sequence(fens)['games']:
+            if game['id'] == game_id:
+                return game
+        raise ValueError('현재 장면 순서에서 경기를 찾지 못했습니다. 외부 후보는 해당 장면에서 다시 검색하세요.')
 
     def connection_status(self):
         return {**self.credentials.status(), 'verified': self.connection_verified}

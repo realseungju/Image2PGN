@@ -250,3 +250,79 @@ def test_remote_export_repetition_and_expiry():
     now[0] += 300
     with pytest.raises(ValueError, match='만료'):
         finder.export_pgn(chess.STARTING_FEN, 'Abcd1234')
+
+
+def test_ordered_positions_with_edits_gaps_and_shared_opening():
+    finder = service()
+    opera = next(g for g in finder.catalog if g['id'] == 'morphy-opera-1858')
+    early = opera['steps'][1]['after_fen']
+    later = opera['steps'][18]['after_fen']
+    assert len(finder.lookup_sequence([early])['games']) == 4
+    match, = finder.lookup_sequence([early, early, later])['games']
+    assert (match['id'], match['match_plies']) == (opera['id'], [19])
+    for out_of_order in ([later, early], [later, AFTER_RF6]):
+        result = finder.lookup_sequence(out_of_order)
+        assert result['games'] == [] and result['first_unmatched'] == 2
+
+
+def test_later_remote_discovery_retains_distinct_games_and_repeated_endpoints():
+    now = [0]
+    prefix = '1. Nf3 Nf6 2. Ng1 Ng8 3. Nf3 Nf6 4. Ng1 Ng8 1/2-1/2'
+    def fetch(url):
+        if '/pgn/' in url:
+            return '[White "' + url[-8:] + '"]\n[Result "1/2-1/2"]\n\n' + prefix
+        return json.dumps(dict(topGames=[candidate('Remote01'), candidate('Remote02')]))
+    finder = service(fetch, clock=lambda: now[0])
+    board = chess.Board()
+    board.push_san('Nf3')
+    fens = [board.fen(), chess.STARTING_FEN]
+    assert not finder.lookup_sequence(fens)['games']
+    data = finder.lookup_sequence(fens, remote_frame=1)
+    assert data['remote_statuses'] == ['not_requested', 'available']
+    assert [(g['id'], g['match_plies']) for g in data['games']] == [
+        ('Remote01', [4, 8]), ('Remote02', [4, 8])]
+    assert finder.sequence_game(fens, 'Remote02')['white']['name'] == 'Remote02'
+    now[0] += 301
+    with pytest.raises(ValueError):
+        finder.sequence_game(fens, 'Remote02')
+
+
+def test_sequence_api_checks_scene_order_on_download_and_old_jobs():
+    app = FastAPI()
+    app.state.config = SimpleNamespace(engine_path=None)
+    store = install_explanation_api(app, lambda _: None, Path(__file__).parents[1]/'image2pgn/web')
+    finder = app.state.master_games
+    game = finder.catalog[0]
+    fens = [step['after_fen'] for step in game['steps'][8:20:10]]
+    path = '/api/explanations/test/scenes'
+    download = path + '/' + game['id'] + '/pgn'
+    with TestClient(app) as client:
+        assert client.post(path, json={'frames': fens}).status_code == 401
+        client.headers['x-chesslens-token'] = store.token
+        store.jobs['test'] = dict(status='ready', result=dict(fen=fens[0]), _cancel=threading.Event())
+        def submit(url, frames, **extra):
+            return client.post(url, json=dict(frames=frames, **extra))
+        result = submit(path, fens).json()
+        assert result['games'][0]['match_plies'] == [19]
+        for ply, expected in [(None, len(game['steps'])), (19, 19)]:
+            reply = submit(download, fens, through_ply=ply)
+            parsed = chess.pgn.read_game(io.StringIO(reply.text))
+            assert reply.status_code == 200 and parsed.end().ply() == expected
+        assert submit(download, fens, through_ply=9).status_code == 422
+        assert submit(download, fens[::-1]).status_code == 422
+        assert submit(path, fens, remote_frame=2).status_code == 422
+        assert submit(path, ['invalid']).status_code == 422
+        assert submit(path, fens*9).status_code == 422
+        store.jobs['test']['status'] = 'cancelled'
+        assert submit(download, fens).status_code == 409
+
+
+def test_unavailable_masters_keeps_local_sequence_and_source_status():
+    def limited(_):
+        raise RemoteFailure('rate_limited', '잠시 뒤 다시 조회하세요.')
+    finder = service(limited)
+    game = finder.catalog[0]
+    fens = [game['steps'][n]['after_fen'] for n in (15, 36)]
+    result = finder.lookup_sequence(fens, remote_frame=1)
+    assert result['remote_statuses'] == ['not_requested', 'rate_limited']
+    assert result['games'][0]['match_plies'] == [37]

@@ -4,6 +4,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from collections import OrderedDict
+import asyncio
 import hashlib
 import json
 import secrets
@@ -11,6 +12,7 @@ import threading
 import time
 import uuid
 import io
+from typing import Annotated
 from urllib.parse import urlsplit
 
 import cv2
@@ -22,7 +24,7 @@ from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
 from .explanations import AnalysisCancelled, capture_options, explain
-from .master_games import MasterGames, RemoteFailure
+from .master_games import MasterGames, RemoteFailure, render_pgn
 from .move_comparison import compare_move
 
 
@@ -45,10 +47,24 @@ class CapturePreview(BaseModel):
     target_uci: str = Field(default="", max_length=5)
 
 
+FrameList = Annotated[list[Annotated[str, Field(min_length=5, max_length=120)]], Field(min_length=1, max_length=16)]
+
+
+class SceneSearch(BaseModel):
+    frames: FrameList
+    remote_frame: int | None = Field(default=None, ge=0, lt=16)
+
+
+class SceneExport(BaseModel):
+    frames: FrameList
+    through_ply: int | None = Field(default=None, ge=0, le=600)
+
+
 class MoveComparisonRequest(BaseModel):
     model_config = {'extra': 'forbid'}
     game_id: str = Field(pattern=r'^[a-zA-Z0-9-]+$', min_length=1, max_length=64)
     ply: int = Field(strict=True, ge=0, le=599)
+    frames: FrameList | None = None
 
 
 class JobStore:
@@ -183,8 +199,33 @@ class JobStore:
         self.pool.shutdown(wait=False, cancel_futures=True)
 
 
+async def read_review_image(image):
+    if image.content_type not in {'image/png', 'image/jpeg'}:
+        raise HTTPException(415, 'PNG/JPEG만 지원합니다.')
+    payload = await image.read(10*1024*1024+1)
+    if len(payload) > 10*1024*1024:
+        raise HTTPException(413, '10 MiB 이하 이미지만 지원합니다.')
+    try:
+        with Image.open(io.BytesIO(payload)) as header:
+            if header.format not in {'PNG', 'JPEG'}:
+                raise ValueError()
+            if header.width * header.height > 24_000_000:
+                raise HTTPException(413, '이미지 해상도가 너무 큽니다.')
+    except HTTPException:
+        raise
+    except (OSError, ValueError, Image.DecompressionBombError):
+        raise HTTPException(422, '유효한 PNG/JPEG 이미지가 아닙니다.')
+    decoded = cv2.imdecode(np.frombuffer(payload, dtype=np.uint8), cv2.IMREAD_COLOR) if payload else None
+    if decoded is None:
+        raise HTTPException(422, '유효한 PNG/JPEG 이미지가 아닙니다.')
+    if decoded.shape[0] * decoded.shape[1] > 24_000_000:
+        raise HTTPException(413, '이미지 해상도가 너무 큽니다.')
+    return payload
+
+
 def install_explanation_api(app, recognize_payload, web_dir, popup=None, analyser=explain):
     store = JobStore(recognize_payload, app.state.config, popup, analyser)
+    scene_recognition_gate = threading.Lock()
     app.state.explanations = store
     app.state.master_games = MasterGames()
     app.state.move_comparer = compare_move
@@ -266,28 +307,7 @@ def install_explanation_api(app, recognize_payload, web_dir, popup=None, analyse
                      confirmed_history: bool = Form(False), before_fen: str = Form('', max_length=120),
                      target_uci: str = Form('', max_length=5), show_popup: bool = Form(False),
                      source_bounds: str = Form(''), capture_uci: str = Form('', max_length=5), focus_square: str = Form('', max_length=2)):
-        payload = b''
-        if image:
-            if image.content_type not in {'image/png', 'image/jpeg'}:
-                raise HTTPException(415, 'PNG/JPEG만 지원합니다.')
-            payload = await image.read(10*1024*1024+1)
-            if len(payload) > 10*1024*1024:
-                raise HTTPException(413, '10 MiB 이하 이미지만 지원합니다.')
-            try:
-                with Image.open(io.BytesIO(payload)) as header:
-                    if header.format not in {'PNG', 'JPEG'}:
-                        raise ValueError()
-                    if header.width * header.height > 24_000_000:
-                        raise HTTPException(413, '이미지 해상도가 너무 큽니다.')
-            except HTTPException:
-                raise
-            except (OSError, ValueError, Image.DecompressionBombError):
-                raise HTTPException(422, '유효한 PNG/JPEG 이미지가 아닙니다.')
-            decoded = cv2.imdecode(np.frombuffer(payload, dtype=np.uint8), cv2.IMREAD_COLOR) if payload else None
-            if decoded is None:
-                raise HTTPException(422, '유효한 PNG/JPEG 이미지가 아닙니다.')
-            if decoded.shape[0] * decoded.shape[1] > 24_000_000:
-                raise HTTPException(413, '이미지 해상도가 너무 큽니다.')
+        payload = await read_review_image(image) if image else b''
         if not payload and not fen:
             raise HTTPException(400, '이미지 또는 FEN을 입력하세요.')
         if fen and confirmed_history:
@@ -316,6 +336,48 @@ def install_explanation_api(app, recognize_payload, web_dir, popup=None, analyse
             raise HTTPException(409, '판과 게임 정보를 확인하고 분석을 마친 뒤 검색하세요.')
         return app.state.master_games.lookup(job['result']['fen'], remote=remote)
 
+    def ready_for_history(job_id):
+        job = store.get(job_id)
+        if job['status'] != 'ready':
+            raise HTTPException(409, '판 확인과 분석을 마친 뒤 기보를 찾으세요.')
+
+    @app.post('/api/explanations/{job_id}/scene-image')
+    async def recognize_scene(job_id: str, image: UploadFile = File(...)):
+        ready_for_history(job_id)
+        payload = await read_review_image(image)
+        if not scene_recognition_gate.acquire(blocking=False):
+            raise HTTPException(429, '다른 장면을 읽고 있습니다. 잠시 뒤 다시 시도하세요.')
+        try:
+            future = store.pool.submit(store.recognize, payload)
+        except RuntimeError:
+            scene_recognition_gate.release()
+            raise HTTPException(503, '인식 서비스를 종료하고 있습니다.') from None
+        future.add_done_callback(lambda _: scene_recognition_gate.release())
+        try:
+            return await asyncio.wrap_future(future)
+        except (ValueError, RuntimeError, FileNotFoundError) as exc:
+            raise HTTPException(422, str(exc)) from None
+
+    @app.post('/api/explanations/{job_id}/scenes')
+    def search_scenes(job_id: str, query: SceneSearch):
+        ready_for_history(job_id)
+        try:
+            return app.state.master_games.lookup_sequence(query.frames, query.remote_frame)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+
+    @app.post('/api/explanations/{job_id}/scenes/{game_id}/pgn')
+    def download_scenes(job_id: str, game_id: str, query: SceneExport):
+        ready_for_history(job_id)
+        try:
+            game = app.state.master_games.sequence_game(query.frames, game_id)
+            if query.through_ply is not None and query.through_ply not in game['match_plies']:
+                raise ValueError('장면 순서와 마지막 장면에 일치하는 시점을 선택하세요.')
+            content = render_pgn(game, query.through_ply)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+        return pgn_attachment(content, game_id, query.through_ply)
+
     @app.get('/api/explanations/{job_id}/master-games/{game_id}/pgn')
     def download_pgn(job_id: str, game_id: str, through_ply: int | None = None):
         job = store.snapshot(job_id)
@@ -325,6 +387,9 @@ def install_explanation_api(app, recognize_payload, web_dir, popup=None, analyse
             content = app.state.master_games.export_pgn(job['result']['fen'], game_id, through_ply)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from None
+        return pgn_attachment(content, game_id, through_ply)
+
+    def pgn_attachment(content, game_id, through_ply):
         suffix = 'full' if through_ply is None else f'ply-{through_ply}'
         return Response(content, media_type='application/x-chess-pgn',
                         headers={'Content-Disposition': f'attachment; filename="{game_id}-{suffix}.pgn"'})
@@ -335,12 +400,18 @@ def install_explanation_api(app, recognize_payload, web_dir, popup=None, analyse
         if job['status'] != 'ready' or job['_cancel'].is_set():
             raise HTTPException(409, '완료된 분석에서 실제 경기를 선택하세요.')
         key = (job_id, selection.game_id, selection.ply)
+        if selection.frames is not None:
+            key += (tuple(selection.frames),)
         with store.lock:
             if key in store.comparison_cache:
                 store.comparison_cache.move_to_end(key)
                 return store.comparison_cache[key]
         try:
-            game = app.state.master_games.resolve_game(job['result']['fen'], selection.game_id)
+            finder = app.state.master_games
+            if selection.frames is None:
+                game = finder.resolve_game(job['result']['fen'], selection.game_id)
+            else:
+                game = finder.sequence_game(selection.frames, selection.game_id)
             if selection.ply >= len(game['steps']):
                 raise ValueError('비교할 실제 경기 수가 없습니다.')
         except ValueError as exc:

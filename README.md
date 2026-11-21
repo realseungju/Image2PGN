@@ -115,6 +115,7 @@ image. Engine continuations are hypothetical; they are not recovered move histor
 
 ## Recorded games and selected-move comparison
 
+- Use **다음 장면 추가** (add the next scene) to review screenshots or FENs in video order. The search allows skipped moves. Edit or reorder scenes, or query Masters for a specific scene. Partial PGNs end at the selected occurrence of the last scene.
 - Each matched game card lets you save the full PGN or the moves through the selected occurrence. The download includes the game source. A file ending before the last recorded move uses `*` as its result.
 - The bundled catalog has **12 selected historical games**, with source links and
   provenance in [the catalog notes](image2pgn/data/README.md).

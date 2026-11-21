@@ -316,6 +316,19 @@ def install_explanation_api(app, recognize_payload, web_dir, popup=None, analyse
             raise HTTPException(409, '판과 게임 정보를 확인하고 분석을 마친 뒤 검색하세요.')
         return app.state.master_games.lookup(job['result']['fen'], remote=remote)
 
+    @app.get('/api/explanations/{job_id}/master-games/{game_id}/pgn')
+    def download_pgn(job_id: str, game_id: str, through_ply: int | None = None):
+        job = store.snapshot(job_id)
+        if job['status'] != 'ready' or not (job.get('result') or {}).get('fen'):
+            raise HTTPException(409, '판 확인과 분석을 마친 뒤 기보를 저장하세요.')
+        try:
+            content = app.state.master_games.export_pgn(job['result']['fen'], game_id, through_ply)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+        suffix = 'full' if through_ply is None else f'ply-{through_ply}'
+        return Response(content, media_type='application/x-chess-pgn',
+                        headers={'Content-Disposition': f'attachment; filename="{game_id}-{suffix}.pgn"'})
+
     @app.post('/api/explanations/{job_id}/compare-move')
     def compare_historical_move(job_id: str, selection: MoveComparisonRequest):
         job = store.get(job_id)

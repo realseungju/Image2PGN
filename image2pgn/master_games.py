@@ -84,6 +84,7 @@ def parse_game(pgn, game_id, *, curated=None, candidate=None):
                 event=game.headers.get('Event', '?'), date=game.headers.get('Date', '?'),
                 result=result, note_ko=(curated or {}).get('note_ko', ''),
                 sources=(curated or {}).get('sources', [dict(label='Lichess Masters 원기보', url=f'{MASTERS_URL}/pgn/{game_id}')]),
+                site=game.headers['Site'], round=game.headers['Round'],
                 root_fen=root.fen(), steps=steps, position_keys=keys)
 
 
@@ -115,7 +116,7 @@ class MasterGames:
         self.credentials = credentials or TokenStore()
         self.connection_verified = False
 
-    def resolve_game(self, fen, game_id):
+    def resolve_game(self, fen, game_id, *, require_fresh=False):
         """Only allow games associated with the job's confirmed position."""
         key = position_key(checked_board(fen))
         for game in self.catalog:
@@ -125,12 +126,34 @@ class MasterGames:
             raise ValueError('경기 검색 중입니다. 잠시 뒤 다시 비교하세요.')
         try:
             cached = self.cache.get(key)
+            if require_fresh and cached and cached[0] <= self.clock():
+                raise ValueError('이 경기의 조회 시간이 만료됐습니다. 다시 검색한 뒤 저장하세요.')
             for game in cached[1]['games'] if cached else []:
                 if game['id'] == game_id:
                     return game
         finally:
             self.lock.release()
         raise ValueError('이 판에서 확인한 경기만 비교할 수 있습니다. 경기 목록을 다시 검색하세요.')
+
+    def export_pgn(self, fen, game_id, through_ply=None):
+        record = self.resolve_game(fen, game_id, require_fresh=True)
+        steps = record['steps']
+        if through_ply is not None:
+            if not 0 <= through_ply <= len(steps):
+                raise ValueError('기보 범위를 벗어난 시점입니다.')
+            reached = record['root_fen'] if through_ply == 0 else steps[through_ply - 1]['after_fen']
+            if position_key(chess.Board(reached)) != position_key(checked_board(fen)):
+                raise ValueError('확인한 장면과 일치하는 시점을 선택하세요.')
+        end = len(steps) if through_ply is None else through_ply
+        game = chess.pgn.Game()
+        game.headers.update(Event=record['event'], Site=record['site'], Date=record['date'],
+                            Round=record['round'], White=record['white']['name'], Black=record['black']['name'],
+                            Result=record['result'] if end == len(steps) else '*',
+                            Source=record['sources'][0]['url'])
+        node = game
+        for step in steps[:end]:
+            node = node.add_main_variation(chess.Move.from_uci(step['uci']))
+        return game.accept(chess.pgn.StringExporter(variations=False, comments=False)) + '\n'
 
     def connection_status(self):
         return {**self.credentials.status(), 'verified': self.connection_verified}

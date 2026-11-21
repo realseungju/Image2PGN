@@ -24,7 +24,8 @@ function renderBoard(fen,editable=false){
   }
 }
 function error(e){$('error').hidden=false;$('error').textContent=e.message||String(e);}
-async function api(path,body,options={}){const response=await fetch(path,{...options,method:body?'POST':'GET',headers:{'x-chesslens-token':token,...(body&&!(body instanceof FormData)?{'Content-Type':'application/json'}:{})},body:body instanceof FormData?body:body?JSON.stringify(body):undefined});if(!response.ok){let text=await response.text();try{text=JSON.parse(text).detail;}catch{}throw Error(typeof text==='string'?text:JSON.stringify(text));}return response.json();}
+async function request(path,body,options={}){const response=await fetch(path,{...options,method:body?'POST':'GET',headers:{'x-chesslens-token':token,...(body&&!(body instanceof FormData)?{'Content-Type':'application/json'}:{})},body:body instanceof FormData?body:body?JSON.stringify(body):undefined});if(!response.ok){let text=await response.text();try{text=JSON.parse(text).detail;}catch{}throw Error(typeof text==='string'?text:JSON.stringify(text));}return response;}
+async function api(path,body,options){return (await request(path,body,options)).json();}
 let historyView=null,historySearchGeneration=0;
 let comparisonReplay=null,moveComparison=null,comparisonReturnStep=0,comparisonRequest=null,comparisonAbort=null,comparisonGeneration=0;
 const comparedMoves=new Map();
@@ -164,6 +165,25 @@ function watchGame(game,fromStart,matchPly){
   $('history-position').textContent=ChessLensHistory.positionLabel(game,historyView.startPly)+'부터 · '+ChessLensHistory.resultText(game.result);
   renderStep();$('board-section').scrollIntoView({behavior:'smooth',block:'start'});
 }
+async function saveGamePgn(game, select, button, full){
+  const jobId=job.job_id;
+  const ply=select.value;
+  const fresh=()=>button.isConnected && job?.job_id===jobId && job.status==='ready' && (full || select.value===ply);
+  button.disabled=true;
+  try{
+    const path='/api/explanations/'+encodeURIComponent(jobId)+'/master-games/'+encodeURIComponent(game.id)+'/pgn';
+    const response=await request(full ? path : path+'?through_ply='+encodeURIComponent(ply));
+    const file=await response.blob();
+    if(!fresh())return;
+    const url=URL.createObjectURL(file);
+    const link=document.createElement('a');
+    link.href=url;
+    link.download=game.id+'-'+(full?'full':'ply-'+ply)+'.pgn';
+    link.click();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }catch(e){if(fresh())error(e);}
+  finally{button.disabled=false;}
+}
 function renderMasterGames(data){
   $('history').hidden=false;$('history-policy').textContent=data.policy_ko;
   $('history-caveat').textContent=data.caveat_ko;
@@ -184,6 +204,14 @@ function renderMasterGames(data){
     for(const [title,fromStart] of [['이 장면부터',false],['처음부터',true]]){
       const button=document.createElement('button');button.textContent=title;button.onclick=()=>watchGame(game,fromStart,Number(select.value));actions.append(button);
     }card.append(actions);
+    const downloads=document.createElement('div');downloads.className='history-actions';
+    for(const [title,full] of [['경기 전체 PGN 저장',true],['이 장면까지 PGN 저장',false]]){
+      const button=document.createElement('button');
+      button.textContent=title;
+      button.onclick=()=>saveGamePgn(game,select,button,full);
+      downloads.append(button);
+    }
+    card.append(downloads);
     const sources=document.createElement('div');sources.className='history-sources';
     for(const source of game.sources){
       let url;try{url=new URL(source.url);}catch{continue;}

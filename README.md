@@ -115,6 +115,7 @@ image. Engine continuations are hypothetical; they are not recovered move histor
 
 ## Recorded games and selected-move comparison
 
+- Each matched game card lets you save the full PGN or the moves through the selected occurrence. The download includes the game source. A file ending before the last recorded move uses `*` as its result.
 - The bundled catalog has **12 selected historical games**, with source links and
   provenance in [the catalog notes](image2pgn/data/README.md).
 - After a position is confirmed and analyzed, matching recorded games can be

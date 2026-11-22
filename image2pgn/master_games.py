@@ -109,6 +109,14 @@ def render_pgn(record, through_ply=None):
     return game.accept(chess.pgn.StringExporter(variations=False, comments=False)) + '\n'
 
 
+def scene_key(key):
+    """Placement and side to move only: a screenshot cannot show castling or en passant rights.
+
+    The scene order already narrows candidates, and the exported PGN keeps the real game's rights.
+    """
+    return ' '.join(key.split()[:2])
+
+
 def ordered_matches(keys, wanted):
     """Return matched prefix length and all possible end plies for that prefix."""
     earliest = -1
@@ -191,6 +199,16 @@ class MasterGames:
             fetched = self.lookup(fens[remote_frame], remote=True)
 
         records = {game['id']: game for game in self.catalog}
+        # Same rule as lookup(): a remote copy of a catalog game is not a second candidate.
+        fingerprints = {tuple(s['uci'] for s in g['steps']) for g in self.catalog}
+
+        def add_remote(games):
+            for game in games:
+                if tuple(s['uci'] for s in game['steps']) not in fingerprints:
+                    records.setdefault(game['id'], game)
+
+        if fetched:  # Keep this fetch even if another search takes the lock before the cache read.
+            add_remote(fetched['games'])
         statuses = []
         locked = self.lock.acquire(blocking=False)
         try:
@@ -200,8 +218,7 @@ class MasterGames:
                 if cached and cached[0] > self.clock():
                     result = cached[1]
                     status = result['remote_status']
-                    for game in result['games']:
-                        records.setdefault(game['id'], game)
+                    add_remote(result['games'])
                 if index == remote_frame:
                     status = fetched['remote_status']
                 statuses.append(status)
@@ -209,14 +226,14 @@ class MasterGames:
             if locked:
                 self.lock.release()
 
+        wanted = [scene_key(key) for key in keys]
         games = []
         longest = 0
         for record in records.values():
             positions = record.get('position_keys')
             if positions is None:  # Remote cache stores the public view of the full game.
-                positions = [position_key(chess.Board(record['root_fen']))]
-                positions.extend(position_key(chess.Board(step['after_fen'])) for step in record['steps'])
-            count, endpoints = ordered_matches(positions, keys)
+                positions = [record['root_fen']] + [step['after_fen'] for step in record['steps']]
+            count, endpoints = ordered_matches([scene_key(p) for p in positions], wanted)
             longest = max(longest, count)
             if endpoints:
                 games.append({**{k: v for k, v in record.items() if k != 'position_keys'},
@@ -225,9 +242,12 @@ class MasterGames:
                     first_unmatched=None if games else longest + 1)
 
     def sequence_game(self, fens, game_id):
-        for game in self.lookup_sequence(fens)['games']:
+        result = self.lookup_sequence(fens)
+        for game in result['games']:
             if game['id'] == game_id:
                 return game
+        if 'busy' in result['remote_statuses']:
+            raise ValueError('경기 검색 중입니다. 잠시 뒤 다시 시도하세요.')
         raise ValueError('현재 장면 순서에서 경기를 찾지 못했습니다. 외부 후보는 해당 장면에서 다시 검색하세요.')
 
     def connection_status(self):

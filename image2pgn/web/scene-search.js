@@ -9,6 +9,15 @@ function createSceneSearch(){
     available:'조회 완료', partial:'일부 확인', busy:'조회 중', unavailable:'연결 실패',
     rate_limited:'요청 제한', auth_required:'인증 필요', not_requested:'미조회'
   };
+  // A screenshot cannot show castling rights. Assume rights wherever king and rook are still home;
+  // order matching ignores rights, but the Masters query needs a plausible full position.
+  function plausibleCastling(board){
+    const cells=placement(board);
+    const rights=[['K',60,63,'R'],['Q',60,56,'R'],['k',4,7,'r'],['q',4,0,'r']]
+      .filter(([,king,rook,piece])=>cells[king]===(piece==='R'?'K':'k') && cells[rook]===piece)
+      .map(([flag])=>flag).join('');
+    return rights||'-';
+  }
   function invalidate(){
     revision++;
     historySearchGeneration++;
@@ -175,7 +184,7 @@ function createSceneSearch(){
       draft.image=result.board_image;
       $('scene-preview').src=draft.image;
       $('scene-preview').hidden=false;
-      $('scene-fen').value=result.placement+' ? - - 0 1';
+      $('scene-fen').value=result.placement+' ? '+plausibleCastling(result.placement)+' - 0 1';
       drawDraft();
       $('scene-feedback').textContent='인식 결과를 확인하세요. 검토 표시 '+result.review_squares.length+'칸.';
     }catch(e){if(stamp===revision)$('scene-feedback').textContent=e.message;}

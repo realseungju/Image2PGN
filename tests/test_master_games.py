@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 import pytest
 
-from image2pgn.master_games import MasterGames, RemoteFailure, eligible, parse_game, position_key, match_game, MAX_BYTES
+from image2pgn.master_games import MasterGames, RemoteFailure, eligible, parse_game, position_key, match_game, render_pgn, MAX_BYTES
 from image2pgn.explanation_api import install_explanation_api
 
 AFTER_RF6 = 'r3qr1k/pp3pbp/2pn1R2/7Q/3pP3/2NB3P/PPP3P1/R5K1 b - - 1 19'
@@ -326,3 +326,70 @@ def test_unavailable_masters_keeps_local_sequence_and_source_status():
     result = finder.lookup_sequence(fens, remote_frame=1)
     assert result['remote_statuses'] == ['not_requested', 'rate_limited']
     assert result['games'][0]['match_plies'] == [37]
+
+
+def without_rights(fen):
+    """What a scene screenshot yields: placement and turn, but no castling or en passant rights."""
+    parts = fen.split()
+    return ' '.join(parts[:2] + ['-', '-', '0', '1'])
+
+
+def test_screenshot_scene_without_castling_rights_still_matches_in_order():
+    finder = service()
+    opera = next(g for g in finder.catalog if g['id'] == 'morphy-opera-1858')
+    early, later = opera['steps'][1]['after_fen'], opera['steps'][18]['after_fen']
+    assert later.split()[2] != '-'  # Black has not castled yet: the real record keeps rights.
+    match, = finder.lookup_sequence([early, without_rights(later)])['games']
+    assert (match['id'], match['match_plies']) == (opera['id'], [19])
+    # Order still decides, and the exported PGN replays the real game (rights included).
+    assert finder.lookup_sequence([without_rights(later), early])['first_unmatched'] == 2
+    exported = chess.pgn.read_game(io.StringIO(render_pgn(match, 19)))
+    assert exported.end().board().fen() == later
+
+
+def catalog_copy_fetch(game, remote_id='LiDup001'):
+    board, moves = chess.Board(), []
+    for step in game['steps']:
+        move = chess.Move.from_uci(step['uci'])
+        moves.append(board.san(move))
+        board.push(move)
+    movetext = ' '.join((f'{i // 2 + 1}. ' if i % 2 == 0 else '') + m for i, m in enumerate(moves))
+    pgn = f'[Result "{game["result"]}"]\n\n{movetext} {game["result"]}'
+    def fetch(url):
+        return pgn if '/pgn/' in url else json.dumps(dict(topGames=[candidate(remote_id)]))
+    return fetch
+
+
+def test_sequence_drops_remote_copy_of_catalog_game():
+    game = next(g for g in service().catalog if g['id'] == 'kasparov-topalov-1999')
+    finder = service(catalog_copy_fetch(game))
+    fen = game['steps'][44]['after_fen']
+    assert [g['id'] for g in finder.lookup(fen, remote=True)['games']] == [game['id']]
+    data = finder.lookup_sequence([fen], remote_frame=0)
+    assert data['remote_statuses'] == ['available']
+    assert [g['id'] for g in data['games']] == [game['id']]
+
+
+def test_fetched_remote_games_survive_a_concurrent_search_holding_the_lock():
+    prefix = '1. Nf3 Nf6 2. Ng1 Ng8 1/2-1/2'
+    def fetch(url):
+        if '/pgn/' in url:
+            return '[White "R"]\n[Result "1/2-1/2"]\n\n' + prefix
+        return json.dumps(dict(topGames=[candidate('Remote01')]))
+    class Racing(MasterGames):
+        def lookup(self, fen, remote=False):
+            result = super().lookup(fen, remote)
+            if remote:
+                assert self.lock.acquire(blocking=False)  # Another tab starts its own search now.
+            return result
+    finder = Racing(fetch=fetch)
+    board = chess.Board()
+    board.push_san('Nf3')
+    data = finder.lookup_sequence([board.fen()], remote_frame=0)
+    assert data['remote_statuses'] == ['available']
+    assert 'Remote01' in [g['id'] for g in data['games']]
+    # Without a fresh fetch the cache is unreadable while locked: say "busy", not "not found".
+    with pytest.raises(ValueError, match='검색 중'):
+        finder.sequence_game([board.fen()], 'Remote01')
+    finder.lock.release()
+    assert finder.sequence_game([board.fen()], 'Remote01')['id'] == 'Remote01'

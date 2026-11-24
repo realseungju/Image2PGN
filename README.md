@@ -11,9 +11,9 @@ historical games and compare a selected recorded move with an engine recommendat
 The repository keeps its original name, `Image2PGN`. A single screenshot does not
 contain enough information to reconstruct a game's move history.
 
-[Visual walkthrough](https://whichai.fyi/chesslens#image-flow) · [Report an issue](https://github.com/realseungju/Image2PGN/issues)
+[Project page](https://whichai.fyi/projects/chesslens/) · [Report an issue](https://github.com/realseungju/Image2PGN/issues)
 
-The walkthrough uses prerecorded examples. The application below performs local
+The project page summarizes why and how ChessLens was built. The application below performs local
 recognition and analysis. Its explanation UI currently uses Korean labels; this
 README includes their English meaning.
 

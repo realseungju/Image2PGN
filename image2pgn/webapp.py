@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import base64
 from dataclasses import asdict, dataclass
+import json
 import os
 from pathlib import Path
 import tempfile
 
 import cv2
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -55,7 +56,7 @@ def create_app(model_path: Path | None = None, engine_path: Path | None = None, 
         return FileResponse(WEB_DIR / "index.html")
 
     @app.post("/api/recognize")
-    async def recognize(image: UploadFile = File(...)):
+    async def recognize(image: UploadFile = File(...), corners: str | None = Form(None, max_length=512)):
         config: WebConfig = app.state.config
         if config.model_path is None:
             raise HTTPException(503, "The PieceCNN model path is not configured.")
@@ -70,41 +71,13 @@ def create_app(model_path: Path | None = None, engine_path: Path | None = None, 
         if len(payload) > MAX_UPLOAD_BYTES:
             raise HTTPException(413, "Images must be 10 MiB or smaller.")
 
-        temporary_path: Path | None = None
         try:
-            with tempfile.NamedTemporaryFile(prefix="chesslens-", suffix=suffix, delete=False) as temporary:
-                temporary.write(payload)
-                temporary_path = Path(temporary.name)
-            result = await run_in_threadpool(
-                recognize_fen_cnn_result,
-                image_path=temporary_path,
-                model_path=config.model_path,
-                orientation="auto",
-                device=config.device,
-                threshold=0.5,
-                board_detector="grid-v2",
-                suppress_empty_background=False,
-                infer_color_from_image=True,
-                low_confidence_policy="review",
-                retain_board_image=True,
-            )
-            return {
-                "placement": result.placement,
-                "orientation": result.orientation,
-                "orientation_status": result.orientation_status,
-                "orientation_source": result.orientation_source,
-                "orientation_details": result.orientation_details,
-                "board_details": result.board_details,
-                "review_squares": list(result.review_squares),
-                "board_image": _png_data_url(result.board_image),
-            }
-        except HTTPException:
-            raise
+            points = json.loads(corners) if corners is not None else None
+            if corners is not None and not isinstance(points, list):
+                raise ValueError("Enter four image corners.")
+            return await run_in_threadpool(recognize_payload, payload, points)
         except (FileNotFoundError, ValueError, RuntimeError) as exc:
             raise HTTPException(422, f"The board could not be recognized: {exc}") from exc
-        finally:
-            if temporary_path is not None:
-                temporary_path.unlink(missing_ok=True)
 
     @app.post("/api/analyze")
     async def analyze(request: AnalyzeRequest):
@@ -131,7 +104,7 @@ def create_app(model_path: Path | None = None, engine_path: Path | None = None, 
     from .explanation_api import install_explanation_api
     from .popup import open_popup
 
-    def recognize_payload(payload):
+    def recognize_payload(payload, corners=None):
         config = app.state.config
         if config.model_path is None or not config.model_path.is_file():
             raise FileNotFoundError("PieceCNN 모델 경로를 확인하세요.")
@@ -143,8 +116,10 @@ def create_app(model_path: Path | None = None, engine_path: Path | None = None, 
             result = recognize_fen_cnn_result(
                 image_path=path, model_path=config.model_path, orientation="auto", device=config.device,
                 threshold=0.5, board_detector="grid-v2", suppress_empty_background=False,
-                low_confidence_policy="review", infer_color_from_image=True, retain_board_image=True)
+                low_confidence_policy="review", infer_color_from_image=True, retain_board_image=True,
+                image_corners=corners)
             return dict(placement=result.placement, orientation=result.orientation,
+                        orientation_source=result.orientation_source,
                         orientation_status=result.orientation_status, orientation_details=result.orientation_details,
                         review_squares=list(result.review_squares), board_details=result.board_details,
                         board_image=_png_data_url(result.board_image))

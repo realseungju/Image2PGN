@@ -66,7 +66,7 @@ def test_refinement_is_staged_and_640_is_reserved_for_weak_color(monkeypatch,con
     calls=[]
     monkeypatch.setattr('image2pgn.board.find_screenshot_board',lambda image:None)
     monkeypatch.setattr('image2pgn.board_selection.find_board_candidates',lambda *args,**kwargs:[candidate])
-    monkeypatch.setattr('image2pgn.board_selection.grid_evidence',lambda *args,**kwargs:{'parity':1.,'outer':1.,'lines':1.,'contrast':contrast,'valid':True})
+    monkeypatch.setattr('image2pgn.board_selection.grid_evidence',lambda *args,**kwargs:{'parity':1.,'outer':1.,'lines':1.,'contrast':contrast,'valid':True,'weakest_band':1.})
     def refine(gray,candidate,**kwargs):
         calls.append(kwargs['resolution'])
         return candidate

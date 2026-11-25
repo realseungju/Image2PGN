@@ -1,0 +1,37 @@
+.boundary-review {
+  min-width: 0;
+  margin-block: 1rem;
+}
+
+.boundary-review canvas {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  max-height: min(58vh, 38rem);
+  cursor: crosshair;
+}
+
+.boundary-review [hidden] {
+  display: none;
+}
+
+.boundary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .6rem;
+  margin-top: .75rem;
+}
+
+.boundary-actions button, .boundary-actions label {
+  padding: .45rem .65rem;
+  border: 1px solid currentColor;
+  border-radius: .35rem;
+  color: inherit;
+  background: transparent;
+}
+
+.boundary-actions input {
+  max-width: 100%;
+  font: inherit;
+}

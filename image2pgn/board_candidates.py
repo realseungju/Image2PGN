@@ -136,6 +136,77 @@ def find_board_candidates(image: np.ndarray, *, max_candidates: int = 20, min_bo
     return _distinct([_refine(gray, candidate) for candidate in coarse], max_candidates)
 
 
+def _corner_matches(gray, side, count):
+    """Match the colored tile background while ignoring each tile's center."""
+    pattern = _checker_template_fast(side, side)
+    position = (np.arange(side) * 8 / side) % 1
+    near_corner = ((position >= .10) & (position <= .33)) | ((position >= .67) & (position <= .90))
+    mask = np.outer(near_corner, near_corner).astype(np.uint8)
+    scores = cv2.matchTemplate(gray, pattern, cv2.TM_CCOEFF_NORMED, mask=mask)
+    # Blank patches have zero variance and can produce nonfinite responses.
+    np.nan_to_num(scores, copy=False, nan=0, posinf=0, neginf=0)
+    scores = np.abs(scores)
+    scores[scores > 1.001] = 0
+    radius = max(3, side // 3)
+    for _ in range(count):
+        _, score, _, (x, y) = cv2.minMaxLoc(scores)
+        yield float(score), x, y
+        scores[max(0, y-radius):y+radius+1, max(0, x-radius):x+radius+1] = 0
+
+
+def _refine_corners(gray, candidate):
+    x, y, width, height = candidate.bounds
+    pad = max(8, round(.045 * max(width, height)))
+    left, top = max(0, x-pad), max(0, y-pad)
+    right, bottom = min(gray.shape[1], x+width+pad), min(gray.shape[0], y+height+pad)
+    region = gray[top:bottom, left:right]
+    scale = min(1., 720 / max(region.shape))
+    if scale < 1:
+        region = cv2.resize(region, (round(region.shape[1] * scale), round(region.shape[0] * scale)),
+                            interpolation=cv2.INTER_AREA)
+    region = region.astype(np.float32)
+    start = max(24, round(max(64, min(width, height) - pad) * scale))
+    stop = min(*region.shape, round((max(width, height) + pad) * scale))
+    best = candidate
+    best_score = -1.0
+    for side in range(start, stop + 1, 2):
+        score, dx, dy = next(_corner_matches(region, side, 1))
+        if score > best_score:
+            original_side = min(round(side / scale), right - left, bottom - top)
+            refined_x = min(left + round(dx / scale), right - original_side)
+            refined_y = min(top + round(dy / scale), bottom - original_side)
+            best = BoardCandidate((refined_x, refined_y, original_side, original_side), score, candidate.source)
+            best_score = score
+    return best
+
+
+def find_corner_alternatives(image, excluded):
+    """Bounded search for a populated board after a larger empty grid won."""
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    x, y, width, height = excluded
+    pad = max(4, round(max(width, height) * .018))
+    gray[max(0, y-pad):y+height+pad, max(0, x-pad):x+width+pad] = np.median(gray)
+    scale = min(1., 400 / max(gray.shape))
+    work = cv2.resize(gray, (max(1, round(gray.shape[1]*scale)), max(1, round(gray.shape[0]*scale))),
+                      interpolation=cv2.INTER_AREA).astype(np.float32)
+    proposals = []
+    for side in range(max(24, round(96*scale)), min(*work.shape, round(max(width,height)*scale)) + 1, 4):
+        for score, left, top in _corner_matches(work, side, 2):
+            if score < .35:
+                break
+            bounds = tuple(round(value/scale) for value in (left, top, side, side))
+            if bounds_iou(bounds, excluded) < .30:
+                proposals.append(BoardCandidate(bounds, score, "corner_weighted"))
+    refined = []
+    for candidate in sorted(proposals, key=lambda c: -c.score):
+        if any(bounds_iou(candidate.bounds, previous.bounds) >= .7 for previous in refined):
+            continue
+        refined.append(_refine_corners(gray, candidate))
+        if len(refined) >= 6:
+            break
+    return _distinct(refined, 5)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("image", type=Path)

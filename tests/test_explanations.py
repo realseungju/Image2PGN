@@ -30,7 +30,9 @@ def wait_job(client, jid, status):
 def client_for(analyser=None, recognition=None):
     app = FastAPI()
     app.state.config = SimpleNamespace(engine_path=None)
-    def recognize(_):
+    def recognize(payload, corners=None):
+        if callable(recognition):
+            return recognition(payload, corners)
         if isinstance(recognition, Exception):
             raise recognition
         return recognition or dict(placement=FEN.split()[0], review_squares=['h6'])
@@ -138,6 +140,44 @@ def test_bad_recognition_can_be_reviewed_manually():
         assert 'no board' in job['recognition_error'] and job['result'] is None
         assert client.post('/api/explanations', data={'request_id': 'broken'}, files={'image': ('x.png', b'garbage', 'image/png')}).status_code == 422
         assert client.post('/api/explanations', data={'request_id': 'txt'}, files={'image': ('x.txt', b'garbage', 'text/plain')}).status_code == 415
+
+
+def test_unresolved_board_boundary_requires_a_current_correction():
+    source = png()
+    placement = FEN.split()[0]
+    pending = dict(placement=placement, board_details=dict(boundary_action='recapture'))
+    corrected = dict(placement=placement, board_details=dict(method='manual-corners'))
+    corners = [[1, 1], [18, 1], [18, 18], [1, 18]]
+
+    def recognize(payload, points):
+        assert payload == source
+        if points is None:
+            return pending
+        if points != corners:
+            raise cv2.error('invalid boundary')
+        return corrected
+
+    with client_for(recognition=recognize) as client:
+        upload = client.post('/api/explanations', data={'request_id': 'boundary'}, files={'image': ('board.png', source, 'image/png')})
+        job_path = '/api/explanations/' + upload.json()['job_id']
+        jid = upload.json()['job_id']
+        review = wait_job(client, jid, 'needs_input')
+        original = client.get(job_path + '/source-image')
+        assert original.content == source and original.headers['Cache-Control'] == 'no-store'
+        assert client.get(job_path + '/source-image', headers={'x-chesslens-token': ''}).status_code == 401
+        answer = dict(revision=review['revision'], question_id='confirm-position', fen=FEN, confirmed_history=True)
+        assert client.post(job_path + '/answers', json=answer).status_code == 409
+        assert client.post(job_path + '/board-boundary', data={'revision': 1, 'corners': str(corners)}).status_code == 409
+        assert client.post(job_path + '/board-boundary', data={'revision': review['revision'], 'corners': '[]'}).status_code == 200
+        retry = wait_job(client, jid, 'needs_input')
+        assert retry['recognition_error'] == 'invalid boundary'
+        assert client.get(job_path + '/source-image').content == source
+        response = client.post(job_path + '/board-boundary', data={'revision': retry['revision'], 'corners': str(corners)})
+        assert response.status_code == 200 and response.json()['job_id'] == jid
+        review = wait_job(client, jid, 'needs_input')
+        assert review['recognition'] == corrected
+        assert client.get(job_path + '/source-image').status_code == 404
+        assert client.post(job_path + '/answers', json={**answer, 'revision': review['revision']}).status_code == 200
 
 
 def test_real_stockfish_mate_and_fixed_viewpoint():

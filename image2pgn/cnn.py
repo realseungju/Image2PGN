@@ -160,6 +160,7 @@ def recognize_fen_cnn_result(
     low_confidence_policy: str = "empty",
     board_corners: Path | None = None,
     retain_board_image: bool = False,
+    image_corners: list | None = None,
 ) -> RecognitionResult:
     if low_confidence_policy not in ("empty", "review"):
         raise ValueError("low_confidence_policy must be empty or review")
@@ -174,11 +175,14 @@ def recognize_fen_cnn_result(
     model.eval()
 
     image = load_image(image_path)
-    if board_corners is not None:
-        corners = load_correction(board_corners, image_path, image)
-        detection = BoardDetectionResult(corrected_board(image, corners), {
+    if board_corners is not None or image_corners is not None:
+        if board_corners is not None and image_corners is not None:
+            raise ValueError("Provide a correction file or image corners")
+        corners = load_correction(board_corners, image_path, image) if board_corners is not None else image_corners
+        board_image = corrected_board(image, corners)
+        detection = BoardDetectionResult(board_image, {
             "requested_detector": board_detector, "method": "manual", "bounds": None,
-            "corners": corners.tolist(), "fallback_reason": None,
+            "corners": np.asarray(corners).tolist(), "fallback_reason": None,
             "requires_review": False, "status": "boundary_reviewed",
         })
     else:

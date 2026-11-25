@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ChessLens · Screenshot analysis</title>
   <link rel="stylesheet" href="/assets/styles.css?v=5">
+  <link rel="stylesheet" href="/assets/board-boundary.css">
 </head>
 <body>
   <div class="app-shell">
@@ -39,6 +40,7 @@
           <button class="quiet-action hidden" id="retry-button" type="button">Retry detection</button>
         </section>
 
+        <section class="boundary-review" id="boundary-review" hidden></section>
         <section class="review-section hidden" id="review-section" aria-labelledby="review-title">
           <div class="stage-toolbar">
             <div><h1 id="review-title">Detected board</h1><p>Choose a piece, then click a square to edit it.</p></div>
@@ -115,6 +117,7 @@
   </dialog>
 
   <div class="toast hidden" id="toast" role="status"></div>
-  <script src="/assets/app.js?v=5"></script>
+  <script src="/assets/board-boundary.js"></script>
+  <script src="/assets/app.js?v=6"></script>
 </body>
 </html>

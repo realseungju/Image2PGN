@@ -2,7 +2,9 @@
 from dataclasses import asdict
 import cv2
 import numpy as np
-from .board_candidates import BoardCandidate, find_board_candidates, bounds_iou, _refine, _distinct
+from .board_candidates import BoardCandidate, find_board_candidates, find_corner_alternatives, bounds_iou, _refine, _distinct
+
+MIN_BAND_CONTRAST = .20
 
 
 def grid_evidence(image, bounds):
@@ -24,6 +26,12 @@ def grid_evidence(image, bounds):
     parity=np.indices((8,8)).sum(axis=0)%2
     centers=np.array([np.median(colors[parity==i],axis=0) for i in (0,1)])
     contrast=float(np.linalg.norm(centers[0]-centers[1]))
+    projection = (colors @ (centers[0] - centers[1])) / max(contrast * contrast, 1.)
+    band_contrasts = [
+        np.median(band[pattern == 0]) - np.median(band[pattern == 1])
+        for values, patterns in ((projection, parity), (projection.T, parity.T))
+        for band, pattern in zip(values, patterns)
+    ]
     distances=np.linalg.norm(colors[:,:,None,:]-centers[None,None,:,:],axis=3)
     agreement=(distances.argmin(axis=2)==parity)
     parity_score=float(agreement.mean()) if contrast >= 6 else 0.0
@@ -37,7 +45,8 @@ def grid_evidence(image, bounds):
         line_scores.extend(float(response[k-3:k+3].max()) > background*1.5 for k in range(32,256,32))
     lines=float(np.mean(line_scores))
     valid=parity_score>=.78 and outer>=.625 and lines>=.5
-    return {'parity':parity_score,'outer':outer,'lines':lines,'contrast':contrast,'valid':bool(valid)}
+    return {'parity':parity_score,'outer':outer,'lines':lines,'contrast':contrast,'valid':bool(valid),
+            'weakest_band':float(min(band_contrasts))}
 
 
 def _search_candidates(image, *, max_search_width=None):
@@ -60,6 +69,60 @@ def _search_candidates(image, *, max_search_width=None):
     return refined_scored
 
 
+def _complete(evidence):
+    return evidence['valid'] and evidence['weakest_band'] >= MIN_BAND_CONTRAST
+
+
+def _has_piece_evidence(image, bounds):
+    from .board import background_empty_squares, split_squares
+
+    x, y, width, height = bounds
+    board = cv2.resize(image[y:y+height, x:x+width], (640, 640), interpolation=cv2.INTER_AREA)
+    return not all(all(row) for row in background_empty_squares(split_squares(board)))
+
+
+def _finish_selection(image, chosen, scored, alternatives, *, expanded, reason, ambiguous=False):
+    bounds = chosen['bounds']
+    selected_evidence = chosen['evidence']
+    complete = _complete(selected_evidence)
+    ambiguous = ambiguous or not complete
+    options = []
+    if not complete:
+        reason = reason if reason == 'existing_grid_occluded_edge' else 'incomplete_grid'
+    elif not _has_piece_evidence(image, bounds):
+        recovered = []
+        for candidate in find_corner_alternatives(image, bounds):
+            candidate_evidence = grid_evidence(image, candidate.bounds)
+            if _complete(candidate_evidence) and _has_piece_evidence(image, candidate.bounds):
+                recovered.append(dict(asdict(candidate), evidence=candidate_evidence))
+        if recovered:
+            best = recovered[0]
+            bounds, selected_evidence = best['bounds'], best['evidence']
+            options.append(list(bounds))
+            alternatives = [*recovered[1:], *alternatives]
+            reason = 'recovered_populated_board'
+        else:
+            reason = 'empty_grid'
+        scored = [*scored, *recovered]
+        ambiguous = True
+    elif ambiguous:
+        options.append(list(bounds))
+
+    if ambiguous:
+        for other in alternatives:
+            candidate = other['bounds']
+            if (_complete(other['evidence']) and all(bounds_iou(candidate, option) < .5 for option in options)
+                    and _has_piece_evidence(image, candidate)):
+                options.append(list(candidate))
+            if len(options) == 5:
+                break
+    return tuple(bounds), {
+        'candidates': scored, 'expanded_search': expanded, 'requires_review': bool(ambiguous),
+        'selected_evidence': selected_evidence, 'selection_reason': reason,
+        'review_options': options, 'boundary_action': ('choose_board' if options else 'recapture') if ambiguous else None,
+    }
+
+
 def select_board(image):
     """Return original-coordinate bounds plus auditable selection/review metadata.
 
@@ -74,8 +137,9 @@ def select_board(image):
         evidence = grid_evidence(image, existing)
         occluded = evidence['parity'] >= .90 and evidence['lines'] >= .85 and evidence['outer'] >= .5
         if evidence['valid'] or occluded:
-            review = not evidence['valid']
-            return existing, {'candidates':[{'bounds':list(existing),'score':None,'source':'existing_grid','evidence':evidence}], 'selected_evidence':evidence,'expanded_search':False,'requires_review':review,'selection_reason':'existing_grid_occluded_edge' if review else 'existing_grid_validated'}
+            candidate = {'bounds':list(existing),'score':None,'source':'existing_grid','evidence':evidence}
+            return _finish_selection(image, candidate, [candidate], [], expanded=False,
+                                     reason='existing_grid_validated' if evidence['valid'] else 'existing_grid_occluded_edge')
     # The common path searches at most 640px, refining only five diverse proposals.
     scored=_search_candidates(image,max_search_width=640)
     valid=[c for c in scored if c['score']>=.30 and c['evidence']['valid']]
@@ -85,7 +149,8 @@ def select_board(image):
         scored=_search_candidates(image)
         valid=[c for c in scored if c['score']>=.30 and c['evidence']['valid']]
     if not valid:
-        return None, {'candidates':scored,'expanded_search':expanded,'requires_review':True,'selection_reason':'no_valid_full_grid'}
+        return None, {'candidates':scored,'expanded_search':expanded,'requires_review':True,
+                      'selection_reason':'no_valid_full_grid','review_options':[],'boundary_action':'recapture'}
     # Area is a prior only after all candidates have passed full-grid evidence.
     valid.sort(key=lambda c:(c['bounds'][2]*c['bounds'][3],c['score']),reverse=True)
     chosen=valid[0]
@@ -107,5 +172,7 @@ def select_board(image):
             polished_evidence=grid_evidence(image,polished.bounds)
             if polished_evidence['valid']:
                 chosen=dict(asdict(polished),evidence=polished_evidence)
-    ambiguous=any(bounds_iou(chosen['bounds'],c['bounds'])<.5 and c['bounds'][2]*c['bounds'][3]>=.6*chosen['bounds'][2]*chosen['bounds'][3] for c in valid[1:])
-    return tuple(chosen['bounds']), {'candidates':scored,'expanded_search':expanded,'requires_review':bool(ambiguous),'selected_evidence':chosen['evidence'],'selection_reason':'ambiguous_main_board' if ambiguous else 'largest_valid_full_grid'}
+    ambiguous=any(_complete(c['evidence']) and bounds_iou(chosen['bounds'],c['bounds'])<.5
+                  and c['bounds'][2]*c['bounds'][3]>=.6*chosen['bounds'][2]*chosen['bounds'][3] for c in valid[1:])
+    return _finish_selection(image, chosen, scored, valid[1:], expanded=expanded, ambiguous=ambiguous,
+                             reason='ambiguous_main_board' if ambiguous else 'largest_valid_full_grid')

@@ -62,7 +62,7 @@ function changeBranch(){resetComparison();historyView=null;document.body.classLi
 function hasOverlays(){return (job?.recognition?.review_squares||[]).some(s=>s.reason==='colored_overlay');}
 function resetConfirmation(){ $('confirm').checked=false;$('confirm-overlays').checked=false; }
 function updateReviewGate(){
-  $('analyse').disabled=job?.status!=='needs_input'||!reviewTurn||!reviewFocus||!$('confirm').checked||(hasOverlays()&&!$('confirm-overlays').checked)||capturePreviewPending||!capturePreviewValid;
+  $('analyse').disabled=job?.status!=='needs_input'||Boolean(job?.recognition?.board_details?.boundary_action)||!reviewTurn||!reviewFocus||!$('confirm').checked||(hasOverlays()&&!$('confirm-overlays').checked)||capturePreviewPending||!capturePreviewValid;
 }
 function syncTurnButtons(){
   $('focus').disabled=!reviewTurn;
@@ -107,7 +107,36 @@ async function refreshCaptures(){
   }catch(e){if(stamp!==capturePreviewGeneration||job?.job_id!==id)return;$('capture-options-note').textContent='잡기를 확인할 수 없습니다. '+e.message;}
   finally{if(stamp===capturePreviewGeneration){capturePreviewPending=false;updateReviewGate();}}
 }
+function showBoundaryReview(){
+  $('review').hidden=true;
+  $('board-section').hidden=true;
+  $('result').hidden=true;
+  resetConfirmation();
+  updateReviewGate();
+  const {job_id: id, revision}=job;
+  const path='/api/explanations/'+id;
+  const update=async (field, value)=>{
+    $('error').hidden=true;
+    const form=new FormData();
+    form.set('revision', String(revision));
+    form.set(field,value);
+    const next=await api(path+'/board-boundary',form);
+    if(job?.job_id===id&&next.revision>=job.revision) await refresh();
+  };
+  ChessLensBoundary.render($('boundary-review'), {
+    details:job.recognition.board_details, lang:'ko',
+    source:async()=>{
+      const response=await fetch(path+'/source-image',{headers:{'x-chesslens-token':token}});
+      if(!response.ok) throw Error('원본 화면을 불러오지 못했습니다.');
+      return response.blob();
+    },
+    onCorners:(points)=>update('corners',JSON.stringify(points)),
+    onImage:(file)=>update('image',file),
+  });
+  if(job.recognition_error) error(Error(job.recognition_error));
+}
 function showReview(){
+  if(job.recognition?.board_details?.boundary_action){showBoundaryReview();return;}
   const r=job.recognition;$('review').hidden=false;$('board-section').hidden=false;$('result').hidden=true;
   $('crop').hidden=!r?.board_image;if(r?.board_image)$('crop').src=r.board_image;
   $('recognition-note').textContent=r?'원본 화면은 '+(r.orientation==='black'?'흑':'백')+'이 아래에 있는 것으로 보입니다. '+(r.review_squares.length?'노란 칸 '+r.review_squares.length+'곳의 말을 확인하세요. ':'')+(r.board_details?.requires_review?'판의 테두리도 확인하세요. ':'')+'인식 오류는 판 인식 수정에서 고칠 수 있습니다.':job.recognition_error||'말의 위치와 차례를 확인하세요.';
@@ -121,10 +150,32 @@ function showReview(){
   $('before-fen').value=job.before_fen||'';$('target').value=job.target_uci||'';
   resetConfirmation();syncTurnButtons();renderBoard($('fen').value,true);refreshCaptures();
 }
-async function refresh(){if(!job)return;const id=job.job_id,stamp=generation;try{const latest=await api('/api/explanations/'+id);if(!job||id!==job.job_id||latest.revision<job.revision)return;job=latest;updateReviewGate();$('status').textContent=({queued:'분석 준비 중',recognizing:'체스판을 읽고 있습니다',needs_input:'판과 차례를 확인해주세요',analyzing:'이어질 수를 분석하고 있습니다',ready:'분석 완료',failed:'분석하지 못했습니다',cancelled:'분석이 닫혔습니다'}[job.status]||job.progress_stage)+(job.popup_error?' · '+job.popup_error:'');if(job.revision!==renderedRevision){renderedRevision=job.revision;if(job.status==='needs_input')showReview();if(job.status==='ready')showResult();if(job.status==='failed')error(Error(job.error));if(job.status==='cancelled'){clearHistory();stopPlayback();$('status').textContent='닫힌 분석입니다.';$('review').hidden=true;if(window.chesslensShell)window.chesslensShell.close();}}}catch(e){error(e);}}
+async function refresh(){
+  if(!job)return;
+  const id=job.job_id, stamp=generation;
+  try{
+    const latest=await api('/api/explanations/'+id);
+    if(!job||stamp!==generation||id!==job.job_id||latest.revision<job.revision)return;
+    job=latest;
+    updateReviewGate();
+    const boundaryPending=job.status==='needs_input'&&job.recognition?.board_details?.boundary_action;
+    const status={queued:'분석 준비 중',recognizing:'체스판을 읽고 있습니다',needs_input:'판과 차례를 확인해주세요',analyzing:'이어질 수를 분석하고 있습니다',ready:'분석 완료',failed:'분석하지 못했습니다',cancelled:'분석이 닫혔습니다'}[job.status];
+    $('status').textContent=(boundaryPending?'체스판의 테두리를 확인해주세요':status||job.progress_stage)+(job.popup_error?' · '+job.popup_error:'');
+    if(job.revision===renderedRevision)return;
+    renderedRevision=job.revision;
+    if(!boundaryPending) ChessLensBoundary.render($('boundary-review'),null);
+    if(job.status==='needs_input')showReview();
+    if(job.status==='ready')showResult();
+    if(job.status==='failed')error(Error(job.error));
+    if(job.status==='cancelled'){
+      clearHistory();stopPlayback();$('status').textContent='닫힌 분석입니다.';$('review').hidden=true;
+      if(window.chesslensShell)window.chesslensShell.close();
+    }
+  }catch(e){if(stamp===generation)error(e);}
+}
 async function start(){try{$('error').hidden=true;const form=new FormData();form.set('request_id',crypto.randomUUID());form.set('question',$('question').value);const image=$('image').files[0];if(image)form.set('image',image);if($('initial-fen').value.trim()){form.set('fen',$('initial-fen').value.trim());form.set('confirmed_history',String($('initial-confirm').checked));}await attach(await api('/api/explanations',form));}catch(e){error(e);}}
 async function attach(value){clearHistory();stopPlayback();generation++;job=value;renderedRevision=-1;$('start').hidden=true;if(poll)clearInterval(poll);await refresh();poll=setInterval(refresh,700);}
-async function closeSession(){clearHistory();stopPlayback();generation++;if(poll)clearInterval(poll);if(job){try{await api('/api/explanations/'+job.job_id+'/cancel',{});}catch(e){error(e);}}if(window.chesslensShell)window.chesslensShell.close();else{$('status').textContent='분석이 닫혔습니다.';$('start').hidden=false;$('review').hidden=true;$('result').hidden=true;$('board-section').hidden=true;job=null;}}
+async function closeSession(){clearHistory();stopPlayback();generation++;if(poll)clearInterval(poll);ChessLensBoundary.render($('boundary-review'),null);if(job){try{await api('/api/explanations/'+job.job_id+'/cancel',{});}catch(e){error(e);}}if(window.chesslensShell)window.chesslensShell.close();else{$('status').textContent='분석이 닫혔습니다.';$('start').hidden=false;$('review').hidden=true;$('result').hidden=true;$('board-section').hidden=true;job=null;}}
 async function init(){try{token=(await api('/api/explanations/session')).token;await refreshMasterConnection();const id=params.get('job');if(id)await attach(await api('/api/explanations/'+id));const handoff=sessionStorage.getItem('chesslens-confirmed-fen');if(handoff&&!id){sessionStorage.removeItem('chesslens-confirmed-fen');$('initial-fen').value=handoff;$('initial-confirm').checked=true;}}catch(e){error(e);}if(params.get('shell')==='1'&&window.chesslensShell)document.body.classList.add('shell');}
 $('submit').onclick=start;$('close').onclick=closeSession;$('new').onclick=closeSession;$('branch').onchange=changeBranch;$('previous').onclick=()=>{if(animating)return;stopPlayback();stepIndex=Math.max(0,stepIndex-1);renderStep();};$('next').onclick=()=>{stopPlayback();nextStep();};$('flip').onclick=()=>{if(animating)return;stopPlayback();flipped=!flipped;if(job?.status==='needs_input')renderBoard($('fen').value,true);else if(!historyView&&job?.result&&!job.result.branches.length)renderBoard(job.result.root_fen);else renderStep();};$('fen').onchange=()=>{try{resetConfirmation();const side=$('fen').value.trim().split(/\s+/)[1];reviewTurn=['w','b'].includes(side)?side:'';syncTurnButtons();renderBoard($('fen').value,true);refreshCaptures();}catch(e){error(e);}};
 $('turn-white').onclick=()=>chooseTurn('w');$('turn-black').onclick=()=>chooseTurn('b');

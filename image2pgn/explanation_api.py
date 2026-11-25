@@ -51,6 +51,40 @@ class MoveComparisonRequest(BaseModel):
     ply: int = Field(strict=True, ge=0, le=599)
 
 
+async def _read_screenshot(image):
+    if image.content_type not in {'image/png', 'image/jpeg'}:
+        raise HTTPException(415, 'PNG/JPEG만 지원합니다.')
+    payload = await image.read(10*1024*1024+1)
+    if len(payload) > 10*1024*1024:
+        raise HTTPException(413, '10 MiB 이하 이미지만 지원합니다.')
+    try:
+        with Image.open(io.BytesIO(payload)) as header:
+            if header.format not in {'PNG', 'JPEG'}:
+                raise ValueError()
+            if header.width * header.height > 24_000_000:
+                raise HTTPException(413, '이미지 해상도가 너무 큽니다.')
+    except (OSError, ValueError, Image.DecompressionBombError):
+        raise HTTPException(422, '유효한 PNG/JPEG 이미지가 아닙니다.') from None
+    decoded = cv2.imdecode(np.frombuffer(payload, dtype=np.uint8), cv2.IMREAD_COLOR)
+    if decoded is None:
+        raise HTTPException(422, '유효한 PNG/JPEG 이미지가 아닙니다.')
+    if decoded.shape[0] * decoded.shape[1] > 24_000_000:
+        raise HTTPException(413, '이미지 해상도가 너무 큽니다.')
+    return payload
+
+
+def _boundary_pending(recognition):
+    return bool(((recognition or {}).get('board_details') or {}).get('boundary_action'))
+
+
+def _position_question(recognition):
+    if _boundary_pending(recognition):
+        text = '원본에서 전체 체스판의 경계를 확인하거나 새 화면을 첨부하세요.'
+    else:
+        text = '판 전체·차례·캐슬링·앙파상 권리를 확인하세요. 직전 수를 설명하려면 이전 FEN과 대상 수가 필요합니다.'
+    return [dict(id='confirm-position', text=text)]
+
+
 class JobStore:
     def __init__(self, recognize, config, popup=None, analyser=explain):
         self.recognize, self.config, self.popup, self.analyser = recognize, config, popup, analyser
@@ -122,14 +156,15 @@ class JobStore:
                 self.update(job, status='recognizing', progress_stage='보드 인식')
                 try:
                     recognition = self.recognize(payload)
-                    if not self.update(job, recognition=recognition):
+                    if not self.update(job, recognition=recognition,
+                                       _source_image=payload if _boundary_pending(recognition) else None):
                         return
                 except (ValueError, RuntimeError, FileNotFoundError) as exc:
                     if not self.update(job, recognition_error='자동 인식 실패: '+str(exc)[:300]):
                         return
             if not (fen and confirmed):
                 self.update(job, status='needs_input', progress_stage='판·게임 정보 확인', needs_review=True,
-                            clarifications=[dict(id='confirm-position', text='판 전체·차례·캐슬링·앙파상 권리를 확인하세요. 직전 수를 설명하려면 이전 FEN과 대상 수가 필요합니다.')])
+                            clarifications=_position_question(job.get('recognition')))
                 return
             self.analyse(job, fen, before_fen, target_uci, capture_uci, focus_square)
         except AnalysisCancelled:
@@ -157,6 +192,8 @@ class JobStore:
             job = self.get(job_id)
             if job['status'] != 'needs_input' or answer.revision != job['revision'] or answer.question_id != 'confirm-position':
                 raise HTTPException(409, '세션이 변경됐습니다. 최신 확인 질문을 다시 불러오세요.')
+            if _boundary_pending(job.get('recognition')):
+                raise HTTPException(409, '전체 체스판의 경계를 먼저 확인하세요.')
             hints = (job.get('recognition') or {}).get('review_squares', [])
             if any(isinstance(h, dict) and h.get('reason') == 'colored_overlay' for h in hints) and not answer.confirmed_overlays:
                 raise HTTPException(400, '색 표시가 겹친 칸의 확인이 필요합니다.')
@@ -165,12 +202,46 @@ class JobStore:
             self.pool.submit(self.process, job, b'', answer.fen, True, answer.before_fen, answer.target_uci, answer.capture_uci, answer.focus_square)
         return self.snapshot(job_id)
 
+    def source_image(self, job_id):
+        with self.lock:
+            job = self.get(job_id)
+            payload = job.get('_source_image')
+            if job['status'] != 'needs_input' or not payload:
+                raise HTTPException(404, '확인할 원본 화면이 없습니다.')
+            return payload
+
+    def revise_boundary(self, job_id, revision, *, corners=None, image=None):
+        with self.lock:
+            job = self.get(job_id)
+            if revision != job['revision'] or job['status'] != 'needs_input' or not _boundary_pending(job.get('recognition')):
+                raise HTTPException(409, '현재 세션의 판 경계 확인 화면을 다시 불러오세요.')
+            payload = image if image is not None else job.get('_source_image')
+            if payload is None:
+                raise HTTPException(404, '확인할 원본 화면이 없습니다.')
+            self.update(job, status='recognizing', progress_stage='판 경계 다시 읽기')
+            self.pool.submit(self._recognize_boundary, job, payload, corners)
+            return self.snapshot(job_id)
+
+    def _recognize_boundary(self, job, payload, corners):
+        if job['_cancel'].is_set():
+            return
+        try:
+            recognition = self.recognize(payload) if corners is None else self.recognize(payload, corners)
+        except Exception as exc:
+            self.update(job, status='needs_input', progress_stage='판 경계 확인', recognition_error=str(exc)[:300])
+            return
+        self.update(job, status='needs_input', progress_stage='판·게임 정보 확인', recognition=recognition,
+                    recognition_error='', proposed_fen='', capture_uci='', needs_review=True,
+                    clarifications=_position_question(recognition),
+                    _source_image=payload if _boundary_pending(recognition) else None)
+
     def cancel(self, job_id):
         with self.lock:
             job = self.get(job_id)
             if job['status'] != 'cancelled':
                 job['_cancel'].set()
                 job.update(status='cancelled', progress_stage='닫힘', needs_review=False, clarifications=[], recognition=None)
+                job.pop('_source_image', None)
                 # Completed facts stay available until expiry; source crop is removed.
                 job['revision'] += 1
                 job['_updated'] = time.monotonic()
@@ -266,28 +337,7 @@ def install_explanation_api(app, recognize_payload, web_dir, popup=None, analyse
                      confirmed_history: bool = Form(False), before_fen: str = Form('', max_length=120),
                      target_uci: str = Form('', max_length=5), show_popup: bool = Form(False),
                      source_bounds: str = Form(''), capture_uci: str = Form('', max_length=5), focus_square: str = Form('', max_length=2)):
-        payload = b''
-        if image:
-            if image.content_type not in {'image/png', 'image/jpeg'}:
-                raise HTTPException(415, 'PNG/JPEG만 지원합니다.')
-            payload = await image.read(10*1024*1024+1)
-            if len(payload) > 10*1024*1024:
-                raise HTTPException(413, '10 MiB 이하 이미지만 지원합니다.')
-            try:
-                with Image.open(io.BytesIO(payload)) as header:
-                    if header.format not in {'PNG', 'JPEG'}:
-                        raise ValueError()
-                    if header.width * header.height > 24_000_000:
-                        raise HTTPException(413, '이미지 해상도가 너무 큽니다.')
-            except HTTPException:
-                raise
-            except (OSError, ValueError, Image.DecompressionBombError):
-                raise HTTPException(422, '유효한 PNG/JPEG 이미지가 아닙니다.')
-            decoded = cv2.imdecode(np.frombuffer(payload, dtype=np.uint8), cv2.IMREAD_COLOR) if payload else None
-            if decoded is None:
-                raise HTTPException(422, '유효한 PNG/JPEG 이미지가 아닙니다.')
-            if decoded.shape[0] * decoded.shape[1] > 24_000_000:
-                raise HTTPException(413, '이미지 해상도가 너무 큽니다.')
+        payload = await _read_screenshot(image) if image else b''
         if not payload and not fen:
             raise HTTPException(400, '이미지 또는 FEN을 입력하세요.')
         if fen and confirmed_history:
@@ -308,6 +358,28 @@ def install_explanation_api(app, recognize_payload, web_dir, popup=None, analyse
     @app.get('/api/explanations/{job_id}')
     def get_job(job_id: str):
         return store.snapshot(job_id)
+
+    @app.get('/api/explanations/{job_id}/source-image')
+    def source_image(job_id: str):
+        payload = store.source_image(job_id)
+        media = 'image/png' if payload.startswith(b'\x89PNG\r\n\x1a\n') else 'image/jpeg'
+        return Response(payload, media_type=media)
+
+    @app.post('/api/explanations/{job_id}/board-boundary')
+    async def revise_boundary(job_id: str, revision: int = Form(..., ge=1),
+                              corners: str | None = Form(None, max_length=512),
+                              image: UploadFile | None = File(None)):
+        if (corners is None) == (image is None):
+            raise HTTPException(422, '네 모서리 또는 새 화면 중 하나를 보내세요.')
+        if image is not None:
+            return store.revise_boundary(job_id, revision, image=await _read_screenshot(image))
+        try:
+            points = json.loads(corners)
+            if not isinstance(points, list):
+                raise ValueError()
+        except ValueError:
+            raise HTTPException(422, '모서리 좌표 형식이 올바르지 않습니다.') from None
+        return store.revise_boundary(job_id, revision, corners=points)
 
     @app.get('/api/explanations/{job_id}/master-games')
     def master_games(job_id: str, remote: bool = False):

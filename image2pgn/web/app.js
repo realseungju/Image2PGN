@@ -269,6 +269,7 @@ function renderPalette() {
 }
 
 function showEmptyWorkspace() {
+  ChessLensBoundary.render(qs("boundary-review"), null);
   qs("upload-stage").classList.remove("hidden");
   qs("processing-stage").classList.add("hidden");
   qs("review-section").classList.add("hidden");
@@ -284,7 +285,9 @@ function renderSourceList() {
     const button = document.createElement("button");
     button.type = "button";
     button.className = `source-card${item.id === activeItemId ? " active" : ""}`;
-    button.setAttribute("aria-label", `${item.file.name} · ${statusLabel(item.status)}`);
+    const state = item.status === "detected" && item.recognition?.board_details?.boundary_action
+      ? "Confirm board boundary" : statusLabel(item.status);
+    button.setAttribute("aria-label", `${item.file.name} · ${state}`);
 
     const image = document.createElement("img");
     image.src = item.sourceUrl;
@@ -292,7 +295,7 @@ function renderSourceList() {
 
     const status = document.createElement("span");
     status.className = `source-status ${item.status}`;
-    status.textContent = statusLabel(item.status);
+    status.textContent = state;
 
     const name = document.createElement("strong");
     name.textContent = item.file.name;
@@ -324,6 +327,7 @@ function createAnalysisItem(file) {
 }
 
 function showProcessing(item) {
+  ChessLensBoundary.render(qs("boundary-review"), null);
   const isError = item.status === "error";
   const isQueued = item.status === "queued";
   qs("upload-stage").classList.add("hidden");
@@ -498,14 +502,34 @@ function acceptCurrentReviewPredictions() {
 
 function renderRecognition(item) {
   const result = item.recognition;
+  const details = result.board_details || {};
+  const boundary = qs("boundary-review");
+  if (details.boundary_action) {
+    qs("upload-stage").classList.add("hidden");
+    qs("processing-stage").classList.add("hidden");
+    qs("review-section").classList.add("hidden");
+    qs("analysis-setup").classList.add("hidden");
+    qs("result-section").classList.add("hidden");
+    qs("analysis-empty").classList.remove("hidden");
+    qs("analyze-button").disabled = true;
+    ChessLensBoundary.render(boundary, {
+      details, lang: "en", source: () => item.sourceUrl,
+      onCorners: (corners) => reviseBoundary(item, { corners }),
+      onImage: (file) => reviseBoundary(item, { file }),
+    });
+    return;
+  }
+  ChessLensBoundary.render(boundary, null);
   board = copyBoard(item.board);
   renderBoard();
   writeSetup(item.setup);
   syncFen();
 
-  const details = result.board_details || {};
+  const method = details.method || "unknown detector";
   const bounds = (details.bounds || []).join(", ") || "manual review needed";
-  qs("detection-copy").textContent = `${details.method || "unknown detector"} · bounds ${bounds}`;
+  qs("detection-copy").textContent = method === "manual"
+    ? "Board boundary confirmed"
+    : `${method} · bounds ${bounds}`;
 
   const badges = qs("recognition-badges");
   badges.innerHTML = "";
@@ -549,27 +573,46 @@ function activateItem(id) {
   renderRecognition(item);
 }
 
-async function recognizeItem(item) {
+function reviseBoundary(item, options) {
+  recognitionQueue = recognitionQueue.then(() => recognizeItem(item, options));
+  return recognitionQueue;
+}
+
+async function recognizeItem(item, { file = item.file, corners = null } = {}) {
   if (item.generation !== workspaceGeneration) return;
+  const revising = Boolean(item.recognition?.board_details?.boundary_action);
   item.status = "detecting";
   item.error = null;
   if (item.id === activeItemId) showProcessing(item);
   renderSourceList();
   try {
     const data = new FormData();
-    data.append("image", item.file);
+    data.append("image", file);
+    if (corners) data.append("corners", JSON.stringify(corners));
     const response = await fetch("/api/recognize", { method: "POST", body: data });
     const result = await response.json();
     if (!response.ok) throw new Error(result.detail || "Board detection failed.");
     if (item.generation !== workspaceGeneration) return;
+    const recognizedBoard = expandPlacement(result.placement);
+    if (file !== item.file) {
+      URL.revokeObjectURL(item.sourceUrl);
+      item.file = file;
+      item.sourceUrl = URL.createObjectURL(file);
+    }
     item.recognition = result;
-    item.board = expandPlacement(result.placement);
+    item.board = recognizedBoard;
     item.reviewedKeys = new Set();
+    if (revising) {
+      item.setup = defaultSetup();
+      item.analysis = null;
+      item.analysisFen = null;
+    }
     item.status = "detected";
   } catch (error) {
     if (item.generation !== workspaceGeneration) return;
-    item.status = "error";
+    item.status = revising ? "detected" : "error";
     item.error = error.message;
+    if (revising && item.id === activeItemId) showToast(error.message, true);
   }
   if (item.id === activeItemId) activateItem(item.id);
   else renderSourceList();
@@ -684,6 +727,7 @@ function renderAnalysis(result, { persist = true, scroll = true } = {}) {
 }
 
 async function analyze() {
+  if (activeItem()?.recognition?.board_details?.boundary_action) return;
   document.body.classList.add("loading");
   qs("analyze-button").innerHTML = "Analyzing… <span>⌛</span>";
   try {

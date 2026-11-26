@@ -11,9 +11,9 @@ PNG/JPEG에서 말을 인식하고, 필요한 칸을 수정하고, 게임 상태
 저장소 이름은 원래 이름인 `Image2PGN`을 유지합니다. 스크린샷 한 장만으로는
 그 국면에 이르기까지의 전체 기보를 복원할 수 없습니다.
 
-[시각적 작동 설명](https://whichai.fyi/chesslens#image-flow) · [문제 제보](https://github.com/realseungju/Image2PGN/issues)
+[프로젝트 소개](https://whichai.fyi/projects/chesslens/) · [문제 제보](https://github.com/realseungju/Image2PGN/issues)
 
-설명 사이트는 미리 기록한 예시를 보여줍니다. 아래 앱은 내 컴퓨터에서 실제 인식과
+프로젝트 소개 페이지는 만든 이유와 구현 방식을 정리합니다. 아래 앱은 내 컴퓨터에서 실제 인식과
 분석을 실행합니다. 현재 설명 화면의 UI는 한국어입니다. 기본 README는 영어이며,
 이 문서는 같은 내용을 옮긴 한국어판입니다.
 

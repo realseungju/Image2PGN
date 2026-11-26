@@ -186,16 +186,33 @@ def find_corner_alternatives(image, excluded):
     x, y, width, height = excluded
     pad = max(4, round(max(width, height) * .018))
     gray[max(0, y-pad):y+height+pad, max(0, x-pad):x+width+pad] = np.median(gray)
+    return _corner_search(gray, max_side=max(width, height), excluded=excluded)
+
+
+def find_corner_candidates(image):
+    """Piece-tolerant full search for boards the plain checker match misses.
+
+    Low-contrast themes with large dark/light pieces (for example a grey board)
+    can push the whole-tile checker correlation below the proposal floor while
+    the tile corners still alternate cleanly. Proposals are snapped to the seven
+    inner grid lines because the corner score is flat over a tenth of a tile.
+    """
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    candidates = _corner_search(gray, max_side=max(gray.shape))
+    return [BoardCandidate(snap_to_grid_lines(gray, c.bounds), c.score, c.source) for c in candidates]
+
+
+def _corner_search(gray, *, max_side, excluded=None):
     scale = min(1., 400 / max(gray.shape))
     work = cv2.resize(gray, (max(1, round(gray.shape[1]*scale)), max(1, round(gray.shape[0]*scale))),
                       interpolation=cv2.INTER_AREA).astype(np.float32)
     proposals = []
-    for side in range(max(24, round(96*scale)), min(*work.shape, round(max(width,height)*scale)) + 1, 4):
+    for side in range(max(24, round(96*scale)), min(*work.shape, round(max_side*scale)) + 1, 4):
         for score, left, top in _corner_matches(work, side, 2):
             if score < .35:
                 break
             bounds = tuple(round(value/scale) for value in (left, top, side, side))
-            if bounds_iou(bounds, excluded) < .30:
+            if excluded is None or bounds_iou(bounds, excluded) < .30:
                 proposals.append(BoardCandidate(bounds, score, "corner_weighted"))
     refined = []
     for candidate in sorted(proposals, key=lambda c: -c.score):
@@ -205,6 +222,50 @@ def find_corner_alternatives(image, excluded):
         if len(refined) >= 6:
             break
     return _distinct(refined, 5)
+
+
+def _line_start(profile, start, length, tolerance):
+    """Best (start, tile) placing seven inner grid lines on strong edge responses."""
+    best = (-1.0, float(start), length / 8)
+    for tile in np.arange(length / 8 * (1 - tolerance), length / 8 * (1 + tolerance) + .01, .25):
+        for origin in range(max(0, start - round(tile * .2)), start + round(tile * .2) + 1):
+            positions = np.round(origin + tile * np.arange(1, 8)).astype(int)
+            if positions[-1] + 1 >= len(profile):
+                continue
+            score = float(sum(profile[p - 1:p + 2].max() for p in positions))
+            if score > best[0]:
+                best = (score, float(origin), float(tile))
+    return best
+
+
+def _checker_edge_profile(image, start, length, axis):
+    """Edge strength per boundary position, keeping only checker-like edges.
+
+    Crossing a tile boundary flips light/dark in alternate tiles of the other
+    axis, so the signed step changes sign tile by tile. Piece outlines do not
+    follow that alternation and largely cancel out.
+    """
+    span = image[:, start:start + length] if axis == 0 else image[start:start + length, :].T
+    steps = np.diff(span, axis=0)                      # boundary position × other axis
+    signs = np.where((np.arange(span.shape[1]) * 8 // max(length, 1)) % 2, -1., 1.)
+    profile = np.zeros(span.shape[0])
+    profile[1:] = np.abs(steps @ signs) / max(span.shape[1], 1)
+    return profile
+
+
+def snap_to_grid_lines(gray, bounds, tolerance=.03):
+    """Move a square proposal so its inner tile boundaries sit on image edges."""
+    x, y, width, height = bounds
+    image = gray.astype(np.float32)
+    for _ in range(2):
+        rows = _checker_edge_profile(image, x, width, axis=0)
+        cols = _checker_edge_profile(image, y, height, axis=1)
+        _, top, tile_h = _line_start(rows, y, height, tolerance)
+        _, left, tile_w = _line_start(cols, x, width, tolerance)
+        x, y = int(round(left)), int(round(top))
+        width = min(int(round(tile_w * 8)), gray.shape[1] - x)
+        height = min(int(round(tile_h * 8)), gray.shape[0] - y)
+    return x, y, width, height
 
 
 def main():

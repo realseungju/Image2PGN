@@ -2,7 +2,8 @@
 from dataclasses import asdict
 import cv2
 import numpy as np
-from .board_candidates import BoardCandidate, find_board_candidates, find_corner_alternatives, bounds_iou, _refine, _distinct
+from .board_candidates import (BoardCandidate, find_board_candidates, find_corner_alternatives, find_corner_candidates,
+                               bounds_iou, _refine, _distinct)
 
 MIN_BAND_CONTRAST = .20
 
@@ -148,6 +149,18 @@ def select_board(image):
         expanded=True
         scored=_search_candidates(image)
         valid=[c for c in scored if c['score']>=.30 and c['evidence']['valid']]
+    if not valid:
+        # Piece-tolerant fallback: only complete grids found by tile-corner matching.
+        corner=[dict(asdict(c),evidence=grid_evidence(image,c.bounds)) for c in find_corner_candidates(image)]
+        scored=[*scored,*corner]
+        complete=[c for c in corner if _complete(c['evidence'])]
+        if complete:
+            complete.sort(key=lambda c:(c['bounds'][2]*c['bounds'][3],c['score']),reverse=True)
+            ambiguous=any(bounds_iou(complete[0]['bounds'],c['bounds'])<.5
+                          and c['bounds'][2]*c['bounds'][3]>=.6*complete[0]['bounds'][2]*complete[0]['bounds'][3]
+                          for c in complete[1:])
+            return _finish_selection(image, complete[0], scored, complete[1:], expanded=expanded, ambiguous=ambiguous,
+                                     reason='ambiguous_main_board' if ambiguous else 'corner_weighted_full_grid')
     if not valid:
         return None, {'candidates':scored,'expanded_search':expanded,'requires_review':True,
                       'selection_reason':'no_valid_full_grid','review_options':[],'boundary_action':'recapture'}

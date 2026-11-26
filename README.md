@@ -146,7 +146,7 @@ screenshot → board detection → 64-square classification
 | --- | --- |
 | `image2pgn/launcher.py` | One-command launch and configuration checks |
 | `image2pgn/webapp.py`, `explanation_api.py` | Local upload API and review/analysis jobs |
-| `image2pgn/board*.py`, `cnn.py`, `orientation.py` | Board geometry and piece recognition |
+| `image2pgn/board*.py`, `cnn.py`, `piece_sets.py`, `orientation.py` | Board geometry and piece recognition |
 | `image2pgn/analyze.py`, `explanations.py` | Engine analysis and verified move explanations |
 | `image2pgn/master_games.py`, `move_comparison.py` | Matching recorded games and move comparison |
 | `image2pgn/web/` | Browser UI, piece SVGs, and fonts |
@@ -158,6 +158,45 @@ The main UI is `/`; `/explain` remains an alias. The older multi-image workspace
 is preserved at `/workspace`, with a link from the main app. Its confirmed FEN
 can be passed to the explanation screen.
 
+## How well does recognition work?
+
+Scores count a screenshot as correct only when **all 64 squares** match the
+recorded game after automatic orientation. Labels come from replaying public PGNs
+and were checked against the piece positions on the captured page.
+
+| Test images | Bundled CNN only | CNN + piece-set references (app default) |
+| --- | ---: | ---: |
+| Validation squares (public board data + synthetic) | 7,038 / 7,047 squares | — |
+| Lichess screens, 20 games on a board color held out from the references | 39 / 100 | 87 / 100 |
+| One YouTube Shorts video (52 frames) | 52 / 52 | 52 / 52 |
+| Other external screenshots | 1 / 5 | 2 / 5 |
+| **New sources collected after the design was fixed (2026-11-26)** | | |
+| Known piece sets on board colors never used (wood, maple, grey, …) | 15 / 24 | 16 / 24 |
+| Lichess piece sets never used (staunty, california, cardinal, …) | 11 / 24 | 10 / 24 |
+| chess.com public games, default board | 11 / 12 | 11 / 12 |
+
+What the table says:
+
+- The 99.87% square accuracy does not transfer to whole real boards: with the
+  CNN alone only 39 of 100 Lichess screens were fully correct.
+- Most CNN errors came from four piece designs. Comparing squares with per-set
+  references fixes those on familiar boards (39 → 87 of 100).
+- On the 60 new-source screens the full-board count does not improve (37 → 37).
+  Wrong squares drop from 149 to 94, and on known sets with new board colors every
+  remaining wrong square was highlighted for review; the cost is more yellow
+  squares to check (0.8 → 2.0 per board). Unseen piece sets are sometimes mistaken
+  for a similar known set (5 of 24).
+- Two of the 60 new screens (grey board) asked for a board-boundary check even
+  though the full board was visible.
+
+Reproduce with `infra/evaluate_recognition.py` on your own labelled JSONL manifest;
+the screenshots themselves are not distributed.
+
+Local general-purpose vision-language models were also tried on the same task
+(Qwen3.5 9B, Gemma 4 26B-A4B, Qwen3.6 35B-A3B): none read a single whole board
+correctly out of 10, and asking only about low-confidence squares fixed squares but
+not boards (49 → 47 of 70). The small CNN stays.
+
 ## Models, engines, and limits
 
 A small experimental PieceCNN checkpoint is included so image upload works in
@@ -165,6 +204,11 @@ a clean checkout. Its SHA-256 and source experiment are recorded in
 [model.json](image2pgn/assets/model.json); see the
 [model notes](image2pgn/assets/README.md). Custom checkpoints must have the
 compatible PieceCNN architecture and class names.
+
+When the screen's piece set is clearly one of 11 Lichess sets, the app reads the
+board with that set's reference descriptors and highlights squares where they
+disagree with the CNN ([notice](image2pgn/assets/piece_sets/NOTICE.md)). The CLI
+enables this with `--piece-sets`.
 
 Stockfish is not bundled or downloaded automatically. Choose a binary compatible
 with your CPU from its official distribution. The default uv configuration uses
@@ -229,4 +273,6 @@ Third-party artwork and font notices are retained in
 [pieces/COPYING.txt](image2pgn/web/pieces/COPYING.txt), and
 [Pretendard-LICENSE.txt](image2pgn/web/fonts/Pretendard-LICENSE.txt).
 Stockfish and python-chess retain their own licenses; consult their distributions
-when redistributing components. No project-wide license is added by this cleanup.
+when redistributing components. The ChessLens code is released under the
+[MIT License](LICENSE). The piece-set descriptors in `image2pgn/assets/piece_sets/`
+are AGPL-3.0-or-later; see [their notice](image2pgn/assets/piece_sets/NOTICE.md).

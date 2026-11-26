@@ -138,7 +138,7 @@ Windows `stockfish*.exe` 파일에서도 찾습니다. 기본 웹 앱과 포함 
 | --- | --- |
 | `image2pgn/launcher.py` | 단일 실행과 설정 점검 |
 | `image2pgn/webapp.py`, `explanation_api.py` | 로컬 업로드 API와 확인·분석 작업 |
-| `image2pgn/board*.py`, `cnn.py`, `orientation.py` | 판 위치·기하와 기물 인식 |
+| `image2pgn/board*.py`, `cnn.py`, `piece_sets.py`, `orientation.py` | 판 위치·기하와 기물 인식 |
 | `image2pgn/analyze.py`, `explanations.py` | 엔진 분석과 합법 수순 기반 설명 |
 | `image2pgn/master_games.py`, `move_comparison.py` | 실제 경기 검색과 특정 수 비교 |
 | `image2pgn/web/` | 웹 화면, 기물 SVG, 글꼴 |
@@ -150,12 +150,53 @@ Windows `stockfish*.exe` 파일에서도 찾습니다. 기본 웹 앱과 포함 
 `/workspace`에 보존하고 기본 앱에서 연결합니다. 그곳에서 확인한 FEN을 설명 화면으로
 전달할 수 있습니다.
 
+## 인식은 얼마나 맞나요?
+
+스크린샷 한 장은 자동으로 방향을 정한 뒤 **64칸이 모두** 실제 기보와 같을 때만 맞은
+것으로 셉니다. 정답은 공개 기보(PGN)를 재생해 만들고, 캡처한 페이지의 기물 위치와
+대조했습니다.
+
+| 시험 이미지 | 포함 CNN만 | CNN + 기물 세트 기준값 (앱 기본) |
+| --- | ---: | ---: |
+| 검증 칸 (공개 체스판 데이터 + 합성) | 7,038 / 7,047칸 | — |
+| Lichess 화면, 기준값에 쓰지 않은 보드 색의 20경기 | 39 / 100 | 87 / 100 |
+| 유튜브 쇼츠 한 편 (52장) | 52 / 52 | 52 / 52 |
+| 기타 외부 스크린샷 | 1 / 5 | 2 / 5 |
+| **설계를 고정한 뒤 새로 모은 출처 (2026-11-26)** | | |
+| 아는 기물 세트 + 처음 보는 보드 색 (wood, maple, grey 등) | 15 / 24 | 16 / 24 |
+| 처음 보는 Lichess 기물 세트 (staunty, california, cardinal 등) | 11 / 24 | 10 / 24 |
+| chess.com 공개 경기, 기본 보드 | 11 / 12 | 11 / 12 |
+
+표가 말하는 것:
+
+- 칸 정확도 99.87%가 실제 판 전체로 이어지지 않습니다. CNN만으로는 Lichess 화면
+  100장 중 39장만 64칸이 모두 맞았습니다.
+- CNN 오류는 기물 그림 4종에 몰려 있었습니다. 세트별 기준값과 비교하면 익숙한
+  보드에서는 이를 바로잡습니다(100장 중 39 → 87).
+- 새 출처 60장에서는 전체 일치가 늘지 않습니다(37 → 37). 틀린 칸은 149개에서 94개로
+  줄었고, 아는 세트 + 새 보드 색에서는 남은 오류 칸이 모두 확인 표시(노란 칸)에
+  들어갔습니다. 대신 확인할 노란 칸이 판당 0.8개에서 2.0개로 늘었습니다. 처음 보는
+  세트는 비슷한 아는 세트로 오인되기도 합니다(24장 중 5장).
+- 새 화면 60장 중 2장(grey 보드)은 판 전체가 보이는데도 경계 확인을 요구했습니다.
+
+직접 라벨을 붙인 JSONL 목록으로 `infra/evaluate_recognition.py`를 실행하면 재현할 수
+있습니다. 스크린샷 자체는 배포하지 않습니다.
+
+같은 작업을 로컬 범용 VLM(Qwen3.5 9B, Gemma 4 26B-A4B, Qwen3.6 35B-A3B)으로도
+시험했습니다. 판 전체를 맡기면 10장 중 한 장도 다 맞히지 못했고, 확신이 낮은 칸만
+물어보면 칸은 고쳐지지만 판 전체 일치는 늘지 않았습니다(70장 중 49 → 47). 그래서 작은
+CNN을 유지합니다.
+
 ## 모델, 엔진, 한계
 
 새로 받은 코드에서도 이미지 첨부를 실행할 수 있도록 소형 실험용 PieceCNN 모델을
 포함합니다. SHA-256과 원본 실험은 [model.json](image2pgn/assets/model.json)에,
 용도와 한계는 [모델 설명](image2pgn/assets/README.md)에 기록했습니다. 다른 모델은
 PieceCNN 구조와 기물 분류 이름이 호환되어야 합니다.
+
+화면의 기물 그림이 Lichess 11개 세트 중 하나로 분명하면, 앱은 그 세트의 기준값으로
+판을 읽고 CNN과 판독이 엇갈린 칸을 노란 칸으로 표시합니다
+([고지](image2pgn/assets/piece_sets/NOTICE.md)). CLI에서는 `--piece-sets`로 켭니다.
 
 Stockfish는 포함하지 않으며 자동으로 내려받지 않습니다. 공식 배포본에서 내 CPU와
 운영체제에 맞는 실행 파일을 선택하세요. 기본 uv 설정은 Windows/Linux에서 CPU용
@@ -216,4 +257,5 @@ uv run python -m image2pgn analyze-fen --fen "FEN" --engine /path/to/stockfish
 [pieces/COPYING.txt](image2pgn/web/pieces/COPYING.txt),
 [Pretendard-LICENSE.txt](image2pgn/web/fonts/Pretendard-LICENSE.txt)에 보존했습니다.
 Stockfish와 python-chess의 라이선스는 각 배포본을 확인하세요.
-이번 정리로 프로젝트 전체에 적용하는 새 라이선스를 추가하지는 않았습니다.
+ChessLens 코드는 [MIT 라이선스](LICENSE)로 공개합니다. `image2pgn/assets/piece_sets/`의
+기물 세트 기준값은 AGPL-3.0-or-later이며 [별도 고지](image2pgn/assets/piece_sets/NOTICE.md)를 따릅니다.

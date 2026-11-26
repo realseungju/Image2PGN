@@ -117,8 +117,8 @@ def create_app(model_path: Path | None = None, engine_path: Path | None = None, 
                 image_path=path, model_path=config.model_path, orientation="auto", device=config.device,
                 threshold=0.5, board_detector="grid-v2", suppress_empty_background=False,
                 low_confidence_policy="review", infer_color_from_image=True, retain_board_image=True,
-                image_corners=corners)
-            return dict(placement=result.placement, orientation=result.orientation,
+                image_corners=corners, piece_set_routing=True)
+            return dict(placement=result.placement, orientation=result.orientation, piece_set=result.piece_set,
                         orientation_source=result.orientation_source,
                         orientation_status=result.orientation_status, orientation_details=result.orientation_details,
                         review_squares=list(result.review_squares), board_details=result.board_details,

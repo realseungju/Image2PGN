@@ -13,7 +13,7 @@ from .board import BoardDetectionResult
 from .board_review import load_correction, corrected_board
 from .fen import compress_board, orient_board
 from .orientation import resolve_orientation
-from .pieces import CLASS_NAMES, piece_for_class_name
+from .pieces import CLASS_NAMES, PIECE_TO_CLASS, piece_for_class_name
 
 
 IMAGE_SIZE = 96
@@ -42,6 +42,7 @@ class RecognitionResult:
     review_squares: tuple[dict, ...] = ()
     board_details: dict | None = None
     board_image: np.ndarray | None = field(default=None, repr=False, compare=False)
+    piece_set: dict | None = None
 
 
 def train_cnn(config: TrainConfig) -> None:
@@ -130,6 +131,7 @@ def recognize_fen_cnn(
     low_confidence_policy: str = "empty",
     board_corners: Path | None = None,
     retain_board_image: bool = False,
+    piece_set_routing: bool = False,
 ) -> str:
     return recognize_fen_cnn_result(
         image_path=image_path,
@@ -144,6 +146,7 @@ def recognize_fen_cnn(
         low_confidence_policy=low_confidence_policy,
         board_corners=board_corners,
         retain_board_image=retain_board_image,
+        piece_set_routing=piece_set_routing,
     ).placement
 
 
@@ -161,6 +164,7 @@ def recognize_fen_cnn_result(
     board_corners: Path | None = None,
     retain_board_image: bool = False,
     image_corners: list | None = None,
+    piece_set_routing: bool = False,
 ) -> RecognitionResult:
     if low_confidence_policy not in ("empty", "review"):
         raise ValueError("low_confidence_policy must be empty or review")
@@ -261,6 +265,10 @@ def recognize_fen_cnn_result(
                 fen_row.append(piece_for_class_name(class_name))
             board.append(fen_row)
 
+    piece_set = None
+    if piece_set_routing:
+        board, review_squares, piece_set = _route_piece_set(board_image, board, review_squares)
+
     if review_squares:
         print(f"Review {len(review_squares)} uncertain or overlay-covered square(s).", flush=True)
 
@@ -283,10 +291,42 @@ def recognize_fen_cnn_result(
             review_squares=tuple(review_squares),
             board_details=detection.details,
             board_image=board_image if retain_board_image else None,
+            piece_set=piece_set,
         )
 
     board = orient_board(board, orientation)
-    return RecognitionResult(placement=compress_board(board), orientation=orientation, review_squares=tuple(review_squares), board_details=detection.details, board_image=board_image if retain_board_image else None)
+    return RecognitionResult(placement=compress_board(board), orientation=orientation, review_squares=tuple(review_squares), board_details=detection.details, board_image=board_image if retain_board_image else None, piece_set=piece_set)
+
+
+def _route_piece_set(board_image: np.ndarray, board: list[list[str]], review_squares: list[dict]):
+    """Use the piece-set reading when the set is clearly identified; otherwise keep the CNN.
+
+    When the piece-set reading is used, squares where it disagrees with the CNN are marked
+    for review, and CNN hints that only describe the CNN's own guess are dropped. Colored
+    overlay hints still apply because they concern the screen, not the classifier.
+    """
+    from .piece_sets import read_board
+
+    reading = read_board(board_image)
+    summary = reading.summary()
+    if not reading.accepted:
+        summary["strategy"] = "cnn"
+        return board, review_squares, summary
+    summary["strategy"] = "piece_set"
+    cnn_cells = [piece for row in board for piece in row]
+    kept = {(item["screen_row"], item["screen_col"]): item for item in review_squares
+            if item.get("reason") == "colored_overlay"}
+    for index, (piece_set_piece, cnn_piece) in enumerate(zip(reading.cells, cnn_cells, strict=True)):
+        if piece_set_piece == cnn_piece:
+            continue
+        key = divmod(index, 8)
+        kept.setdefault(key, {"screen_row": key[0], "screen_col": key[1],
+                              "reason": "piece_set_disagreement",
+                              "class_name": PIECE_TO_CLASS[cnn_piece],
+                              "proposed_class_name": PIECE_TO_CLASS[piece_set_piece]})
+    summary["disagreements"] = sum(a != b for a, b in zip(reading.cells, cnn_cells))
+    routed = [list(reading.cells[row * 8:(row + 1) * 8]) for row in range(8)]
+    return routed, [kept[key] for key in sorted(kept)], summary
 
 
 def evaluate_cnn(

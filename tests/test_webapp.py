@@ -52,12 +52,14 @@ def test_recognize_returns_board_and_deletes_temporary_file(tmp_path, monkeypatc
         captured["path"] = kwargs["image_path"]
         assert captured["path"].exists()
         assert kwargs["infer_color_from_image"] is True
+        assert kwargs["piece_set_routing"] is True
         return SimpleNamespace(
             placement="8/8/8/8/8/8/8/4K2k", orientation="white",
             orientation_status="estimated", orientation_source="position",
             orientation_details={"reason": "fixture"}, review_squares=(),
             board_details={"method": "grid-v2", "requires_review": False},
             board_image=np.zeros((640, 640, 3), dtype=np.uint8),
+            piece_set={"strategy": "cnn", "piece_set": "pixel"},
         )
     monkeypatch.setattr(webapp, "recognize_fen_cnn_result", fake_recognize)
     response = TestClient(configured_app(tmp_path)).post(
@@ -66,6 +68,7 @@ def test_recognize_returns_board_and_deletes_temporary_file(tmp_path, monkeypatc
     assert response.status_code == 200
     assert response.json()["placement"].endswith("4K2k")
     assert response.json()["board_image"].startswith("data:image/png;base64,")
+    assert response.json()["piece_set"]["strategy"] == "cnn"
     assert not captured["path"].exists()
 
 

@@ -336,6 +336,7 @@ def build_parser() -> argparse.ArgumentParser:
         image_parser.add_argument("--board-detector", choices=("grid", "grid-v2", "legacy"), default="legacy", help="Opt in to 8x8 screenshot pattern search; default preserves the original contour/center crop.")
         image_parser.add_argument("--low-confidence-policy", choices=("empty", "review"), default="empty", help="empty: suppress low confidence; review: retain occupied candidates and print review warnings (experimental).")
         image_parser.add_argument("--background-filter", action="store_true", help="Opt in to board-context empty-square suppression (experimental).")
+        image_parser.add_argument("--piece-sets", action="store_true", help="Use bundled piece-set references when the screen's piece set is clearly identified (the web app default).")
 
     return parser
 
@@ -514,6 +515,7 @@ def main() -> None:
             suppress_empty_background=args.background_filter,
             low_confidence_policy=args.low_confidence_policy,
             board_corners=args.board_corners,
+            piece_set_routing=args.piece_sets,
         )
         if args.placement_only:
             print(placement)
@@ -549,6 +551,7 @@ def main() -> None:
             low_confidence_policy=args.low_confidence_policy,
             board_corners=args.board_corners,
             retain_board_image=args.visual_out is not None,
+            piece_set_routing=args.piece_sets,
         )
         fen = f"{recognition.placement} {args.side_to_move} - - 0 1"
         analysis = analyze_fen(

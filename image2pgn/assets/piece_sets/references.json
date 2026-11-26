@@ -1,0 +1,36 @@
+{
+  "description": "Per piece-set square descriptors for ChessLens piece-set routing.",
+  "cutoffs": {
+    "similarity": 0.6892,
+    "margin": 0.0237
+  },
+  "reference_images": 400,
+  "reference_games": 79,
+  "piece_sets": [
+    "cburnett",
+    "celtic",
+    "chessnut",
+    "fantasy",
+    "firi",
+    "merida",
+    "mpchess",
+    "pirouetti",
+    "pixel",
+    "rhosgfx",
+    "spatial"
+  ],
+  "board_themes": [
+    "blue",
+    "brown",
+    "green",
+    "purple"
+  ],
+  "excluded_piece_sets": [
+    "alpha"
+  ],
+  "occupancy_quantiles": {
+    "empty_q995": 1.0,
+    "occupied_q005": 33.0
+  },
+  "references_sha256": "1d320b6866e03b38730a8b5206ef37beecd4d956442676e5db1db2873468d341"
+}

@@ -171,7 +171,7 @@ and were checked against the piece positions on the captured page.
 | One YouTube Shorts video (52 frames) | 52 / 52 | 52 / 52 |
 | Other external screenshots | 1 / 5 | 2 / 5 |
 | **New sources collected after the design was fixed (2026-11-26)** | | |
-| Known piece sets on board colors never used (wood, maple, grey, …) | 15 / 24 | 16 / 24 |
+| Known piece sets on board colors never used (wood, maple, grey, …) | 16 / 24 | 16 / 24 |
 | Lichess piece sets never used (staunty, california, cardinal, …) | 11 / 24 | 10 / 24 |
 | chess.com public games, default board | 11 / 12 | 11 / 12 |
 
@@ -181,13 +181,17 @@ What the table says:
   CNN alone only 39 of 100 Lichess screens were fully correct.
 - Most CNN errors came from four piece designs. Comparing squares with per-set
   references fixes those on familiar boards (39 → 87 of 100).
-- On the 60 new-source screens the full-board count does not improve (37 → 37).
-  Wrong squares drop from 149 to 94, and on known sets with new board colors every
+- On the 60 new-source screens the combination does not raise full-board matches
+  (CNN alone 38, combination 37).
+  Wrong squares drop from 148 to 94, and on known sets with new board colors every
   remaining wrong square was highlighted for review; the cost is more yellow
   squares to check (0.8 → 2.0 per board). Unseen piece sets are sometimes mistaken
   for a similar known set (5 of 24).
 - Two of the 60 new screens (grey board) asked for a board-boundary check even
-  though the full board was visible.
+  though the full board was visible. A later fix finds such low-contrast boards
+  by tile corners; on 24 further grey-board screens not used while building it,
+  boundary checks fell from 4 to 0 and all 24 boundaries matched. The table
+  above uses the fixed detector.
 
 Reproduce with `infra/evaluate_recognition.py` on your own labelled JSONL manifest;
 the screenshots themselves are not distributed.

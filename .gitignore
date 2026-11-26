@@ -24,3 +24,8 @@ engines/
 build/
 dist/
 *.egg-info/
+
+# Legacy experiment material kept out of the public tree
+kaggle_chess_data/
+debug_compare/
+fen_results.txt

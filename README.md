@@ -27,7 +27,30 @@ engine version and search time.
 
 </details>
 
-## Quick start
+## Run the release ZIP
+
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and extract
+[Stockfish](https://stockfishchess.org/download/) for your computer. Extract
+the versioned ChessLens ZIP to a writable folder. On Windows, put the extracted
+`stockfish*.exe` and its accompanying files in a `stockfish` folder beside
+`Start-ChessLens.cmd`, then double-click the launcher. On macOS or Linux, open
+a terminal in the extracted folder and run:
+
+```sh
+uv run --frozen --no-dev chesslens --port 8787 --engine /path/to/stockfish
+```
+
+The first launch needs internet access to prepare Python and dependencies.
+The app opens at **http://127.0.0.1:8787/**. Try `image/chess_img4.png`
+and follow [Upload, review, analyze](#upload-review-analyze). Press **Ctrl+C**
+in the launcher terminal to stop. If Holiday is also running, keep the release
+in its own folder and leave port 8771 available to the companion.
+
+For a setup check from PowerShell, run `.\Start-ChessLens.cmd --doctor`.
+The `.zip.sha256` file lists the expected archive hash. Compare it with
+`Get-FileHash .\chesslens-0.2.1.zip -Algorithm SHA256` before extraction.
+
+## Run from a source checkout
 
 You need [uv](https://docs.astral.sh/uv/getting-started/installation/) and a
 separately installed [Stockfish executable](https://stockfishchess.org/download/).
@@ -92,6 +115,8 @@ image. Engine continuations are hypothetical; they are not recovered move histor
 
 ## Recorded games and selected-move comparison
 
+- Use **다음 장면 추가** (add the next scene) to review screenshots or FENs in video order. The search allows skipped moves. Edit or reorder scenes, or query Masters for a specific scene. Partial PGNs end at the selected occurrence of the last scene.
+- Each matched game card lets you save the full PGN or the moves through the selected occurrence. The download includes the game source. A file ending before the last recorded move uses `*` as its result.
 - The bundled catalog has **12 selected historical games**, with source links and
   provenance in [the catalog notes](image2pgn/data/README.md).
 - After a position is confirmed and analyzed, matching recorded games can be
@@ -166,8 +191,11 @@ uv sync --group dev
 uv run pytest tests -q
 uv run python infra/check_javascript.py
 uv build
+uv run --no-sync python infra/build_release.py
 ```
 
+The last command creates the end-user ZIP and its SHA-256 file in `dist/` from
+the current Git commit. Run development checks from a Git checkout.
 The committed `uv.lock` pins the resolved environment. Node.js is needed for
 JavaScript regression checks, not for running the local web app. The check
 runner works on Windows/Linux and creates synthetic inputs for the label-review
@@ -192,7 +220,7 @@ desktop popup is documented in [desktop/README.md](desktop/README.md).
 | Stockfish not found | Extract the download and pass the executable with `--engine`; a folder/ZIP is not an executable. |
 | Engine cannot start | Select a build compatible with your OS/CPU; run `uv run chesslens --doctor`. |
 | Model missing/checksum mismatch | Restore `image2pgn/assets/` from the repository, or specify your own compatible model. |
-| Port already in use | Stop the other local instance or use `--port 8787`. |
+| Port already in use | Choose a free port for this instance, e.g. `uv run --frozen --no-dev chesslens --port 8788`. |
 | Incorrect board/capture options | Correct pieces, turn, and game-state fields before confirming. |
 | Masters unavailable | Offline catalog/analysis still work; external lookup needs a valid user-entered token and network access. |
 

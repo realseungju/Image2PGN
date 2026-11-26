@@ -26,7 +26,30 @@ PNG/JPEG에서 말을 인식하고, 필요한 칸을 수정하고, 게임 상태
 
 </details>
 
-## 빠른 시작
+## ZIP 배포판 실행
+
+[uv](https://docs.astral.sh/uv/getting-started/installation/)를 설치하고 운영체제에 맞는
+[Stockfish](https://stockfishchess.org/download/)의 압축을 풉니다.
+`chesslens-0.2.1.zip`은 쓰기 가능한 새 폴더에 풉니다. Windows에서는
+`Start-ChessLens.cmd` 옆에 `stockfish` 폴더를 만들고, 그 안에 압축을 푼
+`stockfish*.exe`와 동봉 파일을 넣습니다. `Start-ChessLens.cmd`를 더블클릭하면 됩니다.
+macOS와 Linux에서는 배포판 폴더에서 다음 명령을 실행합니다.
+
+```sh
+uv run --frozen --no-dev chesslens --port 8787 --engine /path/to/stockfish
+```
+
+첫 실행은 Python과 의존성을 준비하기 위해 인터넷 연결이 필요합니다.
+브라우저에서 **http://127.0.0.1:8787/** 이 열리면 `image/chess_img4.png`를 첨부해
+[이미지 첨부, 판 확인, 분석](#이미지-첨부-판-확인-분석)을 따라가세요.
+종료할 때는 실행 터미널에서 **Ctrl+C**를 누릅니다. Holiday를 함께 쓰는 경우
+배포판은 별도 폴더에서 실행하고 8771번 포트는 연동 서비스용으로 둡니다.
+
+PowerShell에서 설치 상태만 확인하려면 `.\Start-ChessLens.cmd --doctor`를 실행하세요.
+압축을 풀기 전에 `Get-FileHash .\chesslens-0.2.1.zip -Algorithm SHA256`의 출력과
+함께 제공한 `.zip.sha256` 파일의 값을 비교할 수 있습니다.
+
+## 소스 체크아웃에서 실행
 
 [uv](https://docs.astral.sh/uv/getting-started/installation/)와 별도로 설치한
 [Stockfish 실행 파일](https://stockfishchess.org/download/)이 필요합니다.
@@ -87,6 +110,8 @@ Windows `stockfish*.exe` 파일에서도 찾습니다. 기본 웹 앱과 포함 
 
 ## 실제 경기 검색과 특정 수 비교
 
+- **다음 장면 추가**에서 같은 영상의 스크린샷을 차례로 올리거나 FEN을 입력하세요. 각 판과 차례를 확인하면 중간 수가 생략된 경우에도 순서가 맞는 경기만 남습니다. 장면을 수정·재정렬하거나 원하는 장면에서 Masters를 조회할 수 있습니다. 부분 PGN은 목록의 마지막 장면에서 선택한 시점까지 저장합니다.
+- 경기 카드에서 **경기 전체 PGN 저장** 또는 **이 장면까지 PGN 저장**을 선택합니다. 같은 판이 반복되면 먼저 일치 시점을 고릅니다. 파일에 출처를 담고, 중간까지 저장한 파일의 결과는 `*`로 표시합니다.
 - 포함된 목록에는 **선정한 역사적 경기 12개**가 있습니다.
   [기보 출처 문서](image2pgn/data/README.md)에 출처와 유래가 정리되어 있습니다.
 - 판을 확인하고 분석하면 같은 국면의 실제 경기를 찾고, 처음부터 또는 해당 장면부터
@@ -156,8 +181,11 @@ uv sync --group dev
 uv run pytest tests -q
 uv run python infra/check_javascript.py
 uv build
+uv run --no-sync python infra/build_release.py
 ```
 
+마지막 명령은 현재 Git 커밋으로 사용자용 ZIP과 SHA-256 파일을 `dist/`에 만듭니다.
+개발 검사는 Git 체크아웃에서 실행합니다.
 커밋된 `uv.lock`이 해석된 의존성 버전을 고정합니다. Node.js는 JavaScript 회귀 검사에
 필요하며 로컬 웹 앱 실행에는 필요하지 않습니다. 검사 실행기는 Windows/Linux에서
 작동하고, 라벨 검토 도구에는 합성 입력을 생성하므로 개인 학습 데이터가 필요하지 않습니다.
@@ -180,7 +208,7 @@ uv run python -m image2pgn analyze-fen --fen "FEN" --engine /path/to/stockfish
 | Stockfish를 찾지 못함 | 압축을 풀고 `--engine`에 실행 파일을 지정합니다. 폴더·ZIP은 실행 파일이 아닙니다. |
 | 엔진 실행 실패 | 운영체제·CPU에 맞는 배포본인지 확인하고 `uv run chesslens --doctor`를 실행합니다. |
 | 모델 없음·체크섬 불일치 | 저장소의 `image2pgn/assets/`를 복원하거나 호환되는 모델을 지정합니다. |
-| 포트 사용 중 | 다른 인스턴스를 종료하거나 `--port 8787`을 사용합니다. |
+| 포트 사용 중 | 이번 실행에 비어 있는 포트를 지정하세요. 예: `uv run --frozen --no-dev chesslens --port 8788`. |
 | 판·잡기 선택이 잘못됨 | 말을 수정하고 차례·게임 상태를 확인한 뒤 확정합니다. |
 | Masters 사용 불가 | 오프라인 목록과 분석은 계속 사용할 수 있습니다. 외부 검색에는 유효한 사용자 토큰과 네트워크가 필요합니다. |
 

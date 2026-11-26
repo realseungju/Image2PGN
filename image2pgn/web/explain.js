@@ -24,7 +24,8 @@ function renderBoard(fen,editable=false){
   }
 }
 function error(e){$('error').hidden=false;$('error').textContent=e.message||String(e);}
-async function api(path,body,options={}){const response=await fetch(path,{...options,method:body?'POST':'GET',headers:{'x-chesslens-token':token,...(body&&!(body instanceof FormData)?{'Content-Type':'application/json'}:{})},body:body instanceof FormData?body:body?JSON.stringify(body):undefined});if(!response.ok){let text=await response.text();try{text=JSON.parse(text).detail;}catch{}throw Error(typeof text==='string'?text:JSON.stringify(text));}return response.json();}
+async function request(path,body,options={}){const response=await fetch(path,{...options,method:body?'POST':'GET',headers:{'x-chesslens-token':token,...(body&&!(body instanceof FormData)?{'Content-Type':'application/json'}:{})},body:body instanceof FormData?body:body?JSON.stringify(body):undefined});if(!response.ok){let text=await response.text();try{text=JSON.parse(text).detail;}catch{}throw Error(typeof text==='string'?text:JSON.stringify(text));}return response;}
+async function api(path,body,options){return (await request(path,body,options)).json();}
 let historyView=null,historySearchGeneration=0;
 let comparisonReplay=null,moveComparison=null,comparisonReturnStep=0,comparisonRequest=null,comparisonAbort=null,comparisonGeneration=0;
 const comparedMoves=new Map();
@@ -188,10 +189,12 @@ $('capture').onchange=()=>{resetConfirmation();updateReviewGate();};
 
 $('play').onclick=async()=>{if(playing){stopPlayback();return;}const b=currentBranch();if(!b)return;if(stepIndex>=b.steps.length){stepIndex=0;renderStep();}playing=true;$('play').textContent='멈춤';const stamp=generation;while(playing&&stamp===generation&&stepIndex<b.steps.length){await nextStep();await new Promise(r=>setTimeout(r,1050));}if(stamp===generation)stopPlayback();};
 $('analyse').onclick=async()=>{try{$('error').hidden=true;if(!reviewTurn||!reviewFocus||capturePreviewPending||!capturePreviewValid)throw Error('차례를 선택하고 잡기 확인이 끝난 뒤 분석해주세요.');$('analyse').disabled=true;await api('/api/explanations/'+job.job_id+'/answers',{revision:job.revision,question_id:'confirm-position',fen:$('fen').value.trim(),confirmed_history:$('confirm').checked,confirmed_overlays:$('confirm-overlays').checked,before_fen:$('before-fen').value.trim(),target_uci:$('target').value.trim(),capture_uci:$('capture').value,focus_square:reviewFocus==='*'?'':reviewFocus});await refresh();}catch(e){error(e);updateReviewGate();}};
+const sceneSearch = createSceneSearch();
 window.addEventListener('pagehide',()=>{resetComparison();historySearchGeneration++;stopPlayback();if(poll)clearInterval(poll);});init();
 
 // Historical game playback never replaces the job's verified engine result.
 function clearHistory(){
+  sceneSearch.reset();
   historySearchGeneration++;resetComparison();comparedMoves.clear();historyView=null;
   document.body.classList.remove('history-active');
   $('history-active').hidden=true;$('history').hidden=true;
@@ -215,9 +218,31 @@ function watchGame(game,fromStart,matchPly){
   $('history-position').textContent=ChessLensHistory.positionLabel(game,historyView.startPly)+'부터 · '+ChessLensHistory.resultText(game.result);
   renderStep();$('board-section').scrollIntoView({behavior:'smooth',block:'start'});
 }
-function renderMasterGames(data){
+async function saveGamePgn(game, select, button, full, frames){
+  const jobId=job.job_id;
+  const ply=select.value;
+  const fresh=()=>button.isConnected && job?.job_id===jobId && job.status==='ready' && (full || select.value===ply);
+  button.disabled=true;
+  try{
+    const path='/api/explanations/'+encodeURIComponent(jobId)+'/master-games/'+encodeURIComponent(game.id)+'/pgn';
+    const response=frames
+      ? await request('/api/explanations/'+jobId+'/scenes/'+encodeURIComponent(game.id)+'/pgn',
+                      {frames, through_ply:full ? null : Number(ply)})
+      : await request(full ? path : path+'?through_ply='+encodeURIComponent(ply));
+    const file=await response.blob();
+    if(!fresh())return;
+    const url=URL.createObjectURL(file);
+    const link=document.createElement('a');
+    link.href=url;
+    link.download=game.id+'-'+(full?'full':'ply-'+ply)+'.pgn';
+    link.click();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }catch(e){if(fresh())error(e);}
+  finally{button.disabled=false;}
+}
+function renderMasterGames(data,frames=null){
   $('history').hidden=false;$('history-policy').textContent=data.policy_ko;
-  $('history-caveat').textContent=data.caveat_ko;
+  $('history-caveat').textContent=data.caveat_ko || '';
   const complete=['available','partial'].includes(data.remote_status);
   $('history-status').textContent=data.message_ko||(complete?(data.games.length?'조건에 맞는 동일 국면의 경기 '+data.games.length+'개를 찾았습니다.':'조회한 마스터 후보에서 조건에 맞는 경기를 찾지 못했습니다.'):'유명 경기 '+data.catalog_size+'개를 확인했습니다. 마스터 DB를 검색하고 있습니다.');
   $('history-games').replaceChildren();
@@ -230,11 +255,19 @@ function renderMasterGames(data){
     if(game.note_ko){const note=document.createElement('p');note.textContent=game.note_ko;card.append(note);}
     const label=document.createElement('label');label.textContent='일치한 장면';
     const select=document.createElement('select');select.setAttribute('aria-label','일치한 경기 시점');
-    for(const ply of game.match_plies){const option=document.createElement('option');option.value=ply;option.textContent=ChessLensHistory.positionLabel(game,ply);select.append(option);}label.append(select);card.append(label);
+    for(const ply of game.match_plies){const option=document.createElement('option');option.value=ply;option.textContent=ChessLensHistory.positionLabel(game,ply)+(ply?' · '+game.steps[ply-1].san:'');select.append(option);}label.append(select);card.append(label);
     const actions=document.createElement('div');actions.className='history-actions';
     for(const [title,fromStart] of [['이 장면부터',false],['처음부터',true]]){
       const button=document.createElement('button');button.textContent=title;button.onclick=()=>watchGame(game,fromStart,Number(select.value));actions.append(button);
     }card.append(actions);
+    const downloads=document.createElement('div');downloads.className='history-actions';
+    for(const [title,full] of [['경기 전체 PGN 저장',true],['이 장면까지 PGN 저장',false]]){
+      const button=document.createElement('button');
+      button.textContent=title;
+      button.onclick=()=>saveGamePgn(game,select,button,full,frames);
+      downloads.append(button);
+    }
+    card.append(downloads);
     const sources=document.createElement('div');sources.className='history-sources';
     for(const source of game.sources){
       let url;try{url=new URL(source.url);}catch{continue;}
@@ -244,6 +277,7 @@ function renderMasterGames(data){
   }
 }
 async function loadMasterGames(){
+  if(sceneSearch.active)return sceneSearch.search();
   const stamp=++historySearchGeneration,id=job?.job_id;
   const fresh=()=>stamp===historySearchGeneration&&job?.job_id===id&&job?.status==='ready';
   if(!id||job.status!=='ready')return;
@@ -295,7 +329,7 @@ async function compareSelectedMove(){
   resetComparison();const stamp=comparisonGeneration,request={jobId:job.job_id,gameId:historyView.game.id,ply};
   comparisonRequest=request;comparisonAbort=new AbortController();updateComparisonSelection();$('comparison-status').textContent='같은 시작판에서 실제 수와 추천 수를 비교하고 있습니다.';
   try{
-    const data=await api('/api/explanations/'+request.jobId+'/compare-move',{game_id:request.gameId,ply},{signal:comparisonAbort.signal});
+    const data=await api('/api/explanations/'+request.jobId+'/compare-move',{game_id:request.gameId,ply,...(sceneSearch.active?{frames:sceneSearch.fens()}:{})},{signal:comparisonAbort.signal});
     if(stamp!==comparisonGeneration||!ChessLensComparison.current(request,historyView,stepIndex,job?.job_id))return;
     comparisonRequest=null;comparisonAbort=null;moveComparison=data;comparisonReturnStep=stepIndex;
     comparedMoves.set(request.gameId+':'+ply,data.same_move);while(comparedMoves.size>64)comparedMoves.delete(comparedMoves.keys().next().value);

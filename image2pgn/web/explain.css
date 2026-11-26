@@ -55,3 +55,10 @@
 body.shell{background:transparent}
 .move-list button{font-variant-numeric:tabular-nums;letter-spacing:-.01em}
 .lens .boundary-actions button,.lens .boundary-actions label{border-color:var(--line);background:var(--surface);color:var(--text);border-radius:9px}.lens .boundary-actions button:hover{background:var(--hover)}
+
+#scenes{margin:12px 0;padding:10px;border:1px solid var(--line-soft);border-radius:10px}
+#scene-preview{width:min(100%,260px);display:block;margin:8px auto}
+#scene-list{padding-left:24px}#scene-list li{margin:8px 0;overflow-wrap:anywhere}
+#scenes button{margin:3px;padding:6px 9px;font-size:12px}
+#scene-board{display:grid;grid-template-columns:repeat(8,1fr);max-width:260px;margin:8px auto}
+#scene-board .square{margin:0;padding:0;border-radius:0}

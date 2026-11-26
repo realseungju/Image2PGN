@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chesslens"
-version = "0.2.0"
+version = "0.2.1"
 description = "Local chess screenshot recognition, reviewed positions, and Stockfish replay"
 readme = "README.md"
 requires-python = ">=3.11,<3.15"
@@ -22,6 +22,10 @@ dependencies = [
 
 [project.scripts]
 chesslens = "image2pgn.launcher:main"
+
+[project.urls]
+Source = "https://github.com/realseungju/Image2PGN"
+Issues = "https://github.com/realseungju/Image2PGN/issues"
 
 [project.optional-dependencies]
 training = ["datasets>=4,<5"]
